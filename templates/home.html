@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="pt-br">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Gerenciador de candidaturas</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: #f6f7f9;
+      color: #1f2937;
+    }
+    main {
+      max-width: 1040px;
+      margin: 0 auto;
+      padding: 32px 20px;
+    }
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+    h1 {
+      margin: 0;
+      font-size: 28px;
+    }
+    a {
+      color: #0f766e;
+      font-weight: 700;
+      text-decoration: none;
+    }
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 12px;
+      margin-bottom: 24px;
+    }
+    .metric,
+    table {
+      background: #ffffff;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+    }
+    .metric {
+      padding: 16px;
+    }
+    .metric strong {
+      display: block;
+      font-size: 30px;
+      margin-bottom: 4px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      overflow: hidden;
+    }
+    th,
+    td {
+      padding: 12px 14px;
+      border-bottom: 1px solid #e5e7eb;
+      text-align: left;
+    }
+    tr:last-child td {
+      border-bottom: 0;
+    }
+    .empty {
+      padding: 20px;
+      background: #ffffff;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>Gerenciador de candidaturas</h1>
+      <a href="/admin/">Abrir admin</a>
+    </header>
+
+    <section class="metrics">
+      <div class="metric">
+        <strong>{{ total_applications }}</strong>
+        <span>candidaturas cadastradas</span>
+      </div>
+      <div class="metric">
+        <strong>{{ active_applications }}</strong>
+        <span>candidaturas ativas</span>
+      </div>
+      <div class="metric">
+        <strong>{{ companies }}</strong>
+        <span>empresas monitoradas</span>
+      </div>
+    </section>
+
+    {% if recent_applications %}
+      <table>
+        <thead>
+          <tr>
+            <th>Vaga</th>
+            <th>Empresa</th>
+            <th>Status</th>
+            <th>Proxima acao</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for application in recent_applications %}
+            <tr>
+              <td>{{ application.role_title }}</td>
+              <td>{{ application.company.name }}</td>
+              <td>{{ application.get_status_display }}</td>
+              <td>{{ application.next_action_at|default:"-" }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <div class="empty">
+        Nenhuma candidatura cadastrada ainda. Use o admin para registrar as primeiras empresas, candidaturas e regras de e-mail.
+      </div>
+    {% endif %}
+  </main>
+</body>
+</html>
