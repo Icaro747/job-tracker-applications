@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% load socialaccount %}
+
+{% block title %}Entrar — Gerenciador de candidaturas{% endblock %}
+
+{% block content %}
+  <div class="card">
+    <h2>Entrar</h2>
+    <form method="post" action="{% url 'account_login' %}">
+      {% csrf_token %}
+      {{ form.as_p }}
+      {% if redirect_field_value %}
+        <input type="hidden" name="{{ redirect_field_name }}" value="{{ redirect_field_value }}">
+      {% endif %}
+      <button type="submit">Entrar</button>
+    </form>
+
+    <p style="margin-top:20px;">
+      <a href="{% provider_login_url 'google' %}">Entrar com Google</a>
+    </p>
+    <p class="help">
+      Ainda nao tem conta? <a href="{% url 'account_signup' %}">Cadastre-se</a>.
+    </p>
+  </div>
+{% endblock %}

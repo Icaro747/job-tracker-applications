@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+
+{% block title %}Cadastrar — Gerenciador de candidaturas{% endblock %}
+
+{% block content %}
+  <div class="card">
+    <h2>Criar conta</h2>
+    <form method="post" action="{% url 'account_signup' %}">
+      {% csrf_token %}
+      {{ form.as_p }}
+      {% if redirect_field_value %}
+        <input type="hidden" name="{{ redirect_field_name }}" value="{{ redirect_field_value }}">
+      {% endif %}
+      <button type="submit">Cadastrar</button>
+    </form>
+
+    <p class="help">
+      Ja tem conta? <a href="{% url 'account_login' %}">Entrar</a>.
+    </p>
+  </div>
+{% endblock %}
