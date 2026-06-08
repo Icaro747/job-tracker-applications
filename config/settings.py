@@ -41,6 +41,14 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'django.contrib.sites',
+    # Autenticacao (django-allauth)
+    'allauth',
+    'allauth.account',
+    'allauth.socialaccount',
+    'allauth.socialaccount.providers.google',
+    # Apps do projeto
+    'accounts',
     'applications',
     'email_ingestion',
     'candidate_profile',
@@ -56,6 +64,8 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    # Necessario para o django-allauth
+    'allauth.account.middleware.AccountMiddleware',
 ]
 
 ROOT_URLCONF = 'config.urls'
@@ -127,3 +137,45 @@ STATIC_URL = 'static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+
+# Autenticacao
+# https://docs.allauth.org/
+
+AUTH_USER_MODEL = 'accounts.User'
+
+SITE_ID = 1
+
+AUTHENTICATION_BACKENDS = [
+    # Backend padrao do Django (necessario para o Admin)
+    'django.contrib.auth.backends.ModelBackend',
+    # Backend do allauth (login por e-mail, social login)
+    'allauth.account.auth_backends.AuthenticationBackend',
+]
+
+# Cadastro e login por e-mail (sem campo username visivel ao usuario).
+ACCOUNT_LOGIN_METHODS = {'email'}
+ACCOUNT_SIGNUP_FIELDS = ['email*', 'password1*', 'password2*']
+# Deploy local em rede domestica: nao exige verificacao de e-mail.
+ACCOUNT_EMAIL_VERIFICATION = 'none'
+
+LOGIN_REDIRECT_URL = 'home'
+LOGIN_URL = 'account_login'
+ACCOUNT_LOGOUT_REDIRECT_URL = 'account_login'
+
+# O mesmo fluxo OAuth do Google autentica o usuario e, futuramente, autoriza
+# o acesso ao Gmail (Etapa 3). As credenciais vem do ambiente — o provider so
+# fica utilizavel apos GOOGLE_OAUTH_CLIENT_ID/SECRET serem definidos.
+SOCIALACCOUNT_PROVIDERS = {
+    'google': {
+        'APPS': [
+            {
+                'client_id': os.environ.get('GOOGLE_OAUTH_CLIENT_ID', ''),
+                'secret': os.environ.get('GOOGLE_OAUTH_CLIENT_SECRET', ''),
+                'key': '',
+            },
+        ],
+        'SCOPE': ['profile', 'email'],
+        'AUTH_PARAMS': {'access_type': 'offline'},
+    },
+}

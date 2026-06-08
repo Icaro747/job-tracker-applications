@@ -2,6 +2,17 @@ from django.db import models
 from django.conf import settings
 
 
+class ActiveProfileManager(models.Manager):
+    """Exclui perfis com soft delete e os de usuarios excluidos."""
+
+    def get_queryset(self):
+        return (
+            super()
+            .get_queryset()
+            .filter(deleted_at__isnull=True, user__deleted_at__isnull=True)
+        )
+
+
 class CandidateProfile(models.Model):
     user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='candidate_profile')
     full_name = models.CharField(max_length=180)
@@ -12,8 +23,12 @@ class CandidateProfile(models.Model):
     linkedin_url = models.URLField(blank=True)
     portfolio_url = models.URLField(blank=True)
     summary = models.TextField(blank=True)
+    deleted_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+    objects = ActiveProfileManager()
+    all_objects = models.Manager()
 
     class Meta:
         verbose_name = 'perfil do candidato'
