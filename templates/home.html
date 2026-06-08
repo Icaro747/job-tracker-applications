@@ -1,6 +1,12 @@
 {% extends "base.html" %}
 
 {% block content %}
+  <div class="actions">
+    <a class="btn" href="{% url 'applications:application_create' %}">+ Nova candidatura</a>
+    <a class="btn btn-secondary" href="{% url 'applications:job_create' %}">+ Nova vaga</a>
+    <a class="btn btn-secondary" href="{% url 'applications:company_create' %}">+ Nova empresa</a>
+  </div>
+
   <section class="metrics">
     <div class="metric">
       <strong>{{ total_applications }}</strong>
@@ -29,9 +35,9 @@
       <tbody>
         {% for application in recent_applications %}
           <tr>
-            <td>{{ application.job.role_title }}</td>
+            <td><a href="{{ application.get_absolute_url }}">{{ application.job.role_title }}</a></td>
             <td>{{ application.job.company.name }}</td>
-            <td>{{ application.get_status_display }}</td>
+            <td><span class="badge badge-{{ application.status }}">{{ application.get_status_display }}</span></td>
             <td>{{ application.next_action_at|default:"-" }}</td>
           </tr>
         {% endfor %}

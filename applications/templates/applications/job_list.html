@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Vagas{% endblock %}
+
+{% block content %}
+  <div class="actions">
+    <a class="btn" href="{% url 'applications:job_create' %}">+ Nova vaga</a>
+  </div>
+
+  {% if jobs %}
+    <table>
+      <thead>
+        <tr><th>Cargo</th><th>Empresa</th><th>Local</th><th>Remoto</th><th></th></tr>
+      </thead>
+      <tbody>
+        {% for job in jobs %}
+          <tr>
+            <td>
+              <a href="{{ job.get_absolute_url }}">{{ job.role_title }}</a>
+              {% if job.directed_to %}<span class="tag">direcionada: {{ job.directed_to }}</span>{% endif %}
+            </td>
+            <td>{{ job.company.name }}</td>
+            <td>{{ job.location|default:"-" }}</td>
+            <td>{{ job.remote|yesno:"Sim,Nao" }}</td>
+            <td>{{ job.applications.count }} candidatura(s)</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <div class="empty">Nenhuma vaga cadastrada ainda.</div>
+  {% endif %}
+{% endblock %}

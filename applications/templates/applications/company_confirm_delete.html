@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Excluir empresa{% endblock %}
+
+{% block content %}
+  <div class="card">
+    <h2>Excluir empresa</h2>
+    <p>Tem certeza que deseja excluir <strong>{{ company.name }}</strong>?</p>
+    <form method="post">
+      {% csrf_token %}
+      <div class="actions">
+        <button type="submit" class="btn-danger">Excluir</button>
+        <a href="{% url 'applications:company_detail' company.pk %}">Cancelar</a>
+      </div>
+    </form>
+  </div>
+{% endblock %}

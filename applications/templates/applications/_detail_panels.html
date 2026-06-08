@@ -1,0 +1,76 @@
+{% comment %}
+Bloco recarregavel via HTMX: status, proxima acao e linha do tempo.
+Qualquer acao faz POST e troca este container inteiro (hx-swap=outerHTML).
+{% endcomment %}
+<div id="detail-panels">
+  <div class="panel">
+    <h3>Status</h3>
+    <p>Atual: <span class="badge badge-{{ application.status }}">{{ application.get_status_display }}</span></p>
+    <form hx-post="{% url 'applications:application_status' application.pk %}"
+          hx-target="#detail-panels" hx-swap="outerHTML">
+      {% csrf_token %}
+      <div class="actions">
+        {{ status_form.status }}
+        <button type="submit">Atualizar status</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="panel">
+    <h3>Proxima acao</h3>
+    {% if application.next_action_at %}
+      <div class="{% if application.next_action_overdue %}overdue{% endif %}">
+        <p>
+          <strong>{{ application.get_next_action_type_display }}</strong> —
+          {{ application.next_action_at }}
+          {% if application.next_action_overdue %}<span class="badge badge-rejected">vencida</span>{% endif %}
+        </p>
+        {% if application.next_action_description %}
+          <p>{{ application.next_action_description|linebreaksbr }}</p>
+        {% endif %}
+        <form hx-post="{% url 'applications:application_complete_next_action' application.pk %}"
+              hx-target="#detail-panels" hx-swap="outerHTML" class="inline-form">
+          {% csrf_token %}
+          <button type="submit">Marcar como concluida</button>
+        </form>
+      </div>
+    {% else %}
+      <p class="help">Nenhuma proxima acao definida.</p>
+    {% endif %}
+
+    <form hx-post="{% url 'applications:application_next_action' application.pk %}"
+          hx-target="#detail-panels" hx-swap="outerHTML" style="margin-top:12px">
+      {% csrf_token %}
+      {{ next_action_form.as_p }}
+      <button type="submit">Salvar proxima acao</button>
+    </form>
+  </div>
+
+  <div class="panel">
+    <h3>Adicionar nota</h3>
+    <form hx-post="{% url 'applications:application_note' application.pk %}"
+          hx-target="#detail-panels" hx-swap="outerHTML">
+      {% csrf_token %}
+      {{ note_form.text }}
+      <div class="actions"><button type="submit">Adicionar nota</button></div>
+    </form>
+  </div>
+
+  <div class="panel">
+    <h3>Linha do tempo</h3>
+    {% if timeline %}
+      <ul class="timeline">
+        {% for entry in timeline %}
+          <li>
+            <strong>{{ entry.title }}</strong>
+            <span class="badge">{{ entry.get_entry_type_display }}</span>
+            <div class="when">{{ entry.occurred_at }}</div>
+            {% if entry.description %}<div>{{ entry.description|linebreaksbr }}</div>{% endif %}
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="help">Nenhum evento registrado ainda.</p>
+    {% endif %}
+  </div>
+</div>

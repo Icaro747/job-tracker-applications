@@ -1,5 +1,7 @@
 from django.conf import settings
 from django.db import models
+from django.urls import reverse
+from django.utils import timezone
 
 
 class Company(models.Model):
@@ -26,6 +28,9 @@ class Company(models.Model):
 
     def __str__(self):
         return self.name
+
+    def get_absolute_url(self):
+        return reverse('applications:company_detail', args=[self.pk])
 
 
 class CompanyAuditLog(models.Model):
@@ -62,6 +67,9 @@ class CompanyAuditLog(models.Model):
     def __str__(self):
         return f'{self.company} — {self.get_action_display()} ({self.field_name or "—"})'
 
+    # Campos da empresa rastreados pela auditoria de edicao.
+    AUDITED_FIELDS = ('name', 'website', 'careers_page', 'notes')
+
     @classmethod
     def log_change(cls, company, user, action, field_name='', old_value='', new_value=''):
         return cls.objects.create(
@@ -72,6 +80,42 @@ class CompanyAuditLog(models.Model):
             old_value='' if old_value is None else str(old_value),
             new_value='' if new_value is None else str(new_value),
         )
+
+    @classmethod
+    def record_create(cls, company, user):
+        """Registra a criacao da empresa (um unico log)."""
+        return cls.log_change(company, user, cls.Action.CREATED)
+
+    @classmethod
+    def record_update(cls, company, user, old_values):
+        """Registra a edicao: um log por campo alterado.
+
+        ``old_values`` e um dict {campo: valor_antigo} capturado antes do save.
+        Campos sem alteracao nao geram registro.
+        """
+        logs = []
+        for field in cls.AUDITED_FIELDS:
+            if field not in old_values:
+                continue
+            old = old_values[field]
+            new = getattr(company, field)
+            if old != new:
+                logs.append(
+                    cls.log_change(
+                        company,
+                        user,
+                        cls.Action.UPDATED,
+                        field_name=field,
+                        old_value=old,
+                        new_value=new,
+                    )
+                )
+        return logs
+
+    @classmethod
+    def record_delete(cls, company, user):
+        """Registra a exclusao da empresa (um unico log)."""
+        return cls.log_change(company, user, cls.Action.DELETED)
 
 
 class Job(models.Model):
@@ -106,6 +150,9 @@ class Job(models.Model):
 
     def __str__(self):
         return f'{self.role_title} — {self.company.name}'
+
+    def get_absolute_url(self):
+        return reverse('applications:job_detail', args=[self.pk])
 
 
 class ActiveApplicationManager(models.Manager):
@@ -175,6 +222,89 @@ class JobApplication(models.Model):
 
     def __str__(self):
         return f'{self.job} ({self.get_status_display()})'
+
+    def get_absolute_url(self):
+        return reverse('applications:application_detail', args=[self.pk])
+
+    @property
+    def next_action_overdue(self):
+        """True quando ha proxima acao agendada com data ja vencida."""
+        return self.next_action_at is not None and self.next_action_at < timezone.now()
+
+    def change_status(self, new_status, *, occurred_at=None):
+        """Avanca o status, carimba ``last_status_at`` e registra na timeline.
+
+        No-op quando o status nao muda. Ao entrar em ``applied`` pela primeira
+        vez, preenche ``applied_at``.
+        """
+        if new_status == self.status:
+            return None
+
+        old_label = self.get_status_display()
+        now = occurred_at or timezone.now()
+        self.status = new_status
+        self.last_status_at = now
+        if new_status == self.Status.APPLIED and self.applied_at is None:
+            self.applied_at = now
+        self.save(update_fields=['status', 'last_status_at', 'applied_at', 'updated_at'])
+
+        return ApplicationTimelineEntry.objects.create(
+            application=self,
+            entry_type=ApplicationTimelineEntry.EntryType.STATUS_CHANGE,
+            title=f'Status: {old_label} → {self.get_status_display()}',
+            description='',
+            occurred_at=now,
+        )
+
+    def set_next_action(self, *, at, action_type, description=''):
+        """Define a proxima acao programada da candidatura."""
+        self.next_action_at = at
+        self.next_action_type = action_type
+        self.next_action_description = description
+        self.save(
+            update_fields=[
+                'next_action_at',
+                'next_action_type',
+                'next_action_description',
+                'updated_at',
+            ]
+        )
+
+    def complete_next_action(self, *, note=''):
+        """Conclui a proxima acao: registra na timeline e limpa os campos."""
+        action_label = self.get_next_action_type_display() if self.next_action_type else ''
+        title = 'Proxima acao concluida'
+        if action_label:
+            title = f'{title}: {action_label}'
+        entry = ApplicationTimelineEntry.objects.create(
+            application=self,
+            entry_type=ApplicationTimelineEntry.EntryType.REMINDER,
+            title=title,
+            description=note,
+            occurred_at=timezone.now(),
+        )
+        self.next_action_at = None
+        self.next_action_type = ''
+        self.next_action_description = ''
+        self.save(
+            update_fields=[
+                'next_action_at',
+                'next_action_type',
+                'next_action_description',
+                'updated_at',
+            ]
+        )
+        return entry
+
+    def add_note(self, text, *, occurred_at=None):
+        """Adiciona uma nota manual a linha do tempo."""
+        return ApplicationTimelineEntry.objects.create(
+            application=self,
+            entry_type=ApplicationTimelineEntry.EntryType.MANUAL_NOTE,
+            title='Nota manual',
+            description=text,
+            occurred_at=occurred_at or timezone.now(),
+        )
 
 
 class ApplicationTimelineEntry(models.Model):
