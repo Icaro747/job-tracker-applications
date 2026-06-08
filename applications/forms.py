@@ -21,12 +21,26 @@ class CompanyForm(forms.ModelForm):
         model = Company
         fields = ['name', 'website', 'careers_page', 'notes']
         widgets = {'notes': forms.Textarea(attrs={'rows': 3})}
+        labels = {
+            'name': 'Nome',
+            'website': 'Site',
+            'careers_page': 'Pagina de carreiras',
+            'notes': 'Observacoes',
+        }
 
 
 class JobForm(forms.ModelForm):
     class Meta:
         model = Job
         fields = ['company', 'role_title', 'source_url', 'location', 'remote', 'directed_to']
+        labels = {
+            'company': 'Empresa',
+            'role_title': 'Cargo',
+            'source_url': 'Link da vaga',
+            'location': 'Localizacao',
+            'remote': 'Remoto',
+            'directed_to': 'Direcionada a',
+        }
 
 
 class JobApplicationForm(forms.ModelForm):
@@ -36,6 +50,12 @@ class JobApplicationForm(forms.ModelForm):
         widgets = {
             'applied_at': _DateTimeLocalInput(),
             'notes': forms.Textarea(attrs={'rows': 3}),
+        }
+        labels = {
+            'job': 'Vaga',
+            'status': 'Status',
+            'applied_at': 'Data da candidatura',
+            'notes': 'Observacoes',
         }
 
     def __init__(self, *args, **kwargs):
@@ -55,6 +75,11 @@ class NextActionForm(forms.ModelForm):
             'next_action_at': _DateTimeLocalInput(),
             'next_action_description': forms.Textarea(attrs={'rows': 2}),
         }
+        labels = {
+            'next_action_at': 'Data e hora',
+            'next_action_type': 'Tipo',
+            'next_action_description': 'Descricao',
+        }
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -63,8 +88,8 @@ class NextActionForm(forms.ModelForm):
 
 
 class StatusForm(forms.Form):
-    status = forms.ChoiceField(choices=JobApplication.Status.choices)
+    status = forms.ChoiceField(choices=JobApplication.Status.choices, label='Novo status')
 
 
 class TimelineNoteForm(forms.Form):
-    text = forms.CharField(widget=forms.Textarea(attrs={'rows': 2}))
+    text = forms.CharField(label='Nota', widget=forms.Textarea(attrs={'rows': 2}))
