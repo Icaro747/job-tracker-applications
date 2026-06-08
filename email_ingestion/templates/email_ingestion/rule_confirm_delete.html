@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Excluir regra{% endblock %}
+
+{% block content %}
+  <div class="card">
+    <h2>Excluir regra</h2>
+    <p>Tem certeza que deseja excluir a regra <strong>{{ rule.name }}</strong>?</p>
+    <form method="post">
+      {% csrf_token %}
+      <div class="actions">
+        <button type="submit" class="btn-danger">Excluir</button>
+        <a href="{% url 'email_ingestion:account_detail' rule.email_account_id %}">Cancelar</a>
+      </div>
+    </form>
+  </div>
+{% endblock %}

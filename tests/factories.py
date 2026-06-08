@@ -10,6 +10,7 @@ from applications.models import (
     JobApplication,
 )
 from candidate_profile.models import CandidateProfile
+from email_ingestion.models import EmailAccount, EmailSenderRule, InboundEmail
 
 User = get_user_model()
 
@@ -79,3 +80,32 @@ class CandidateProfileFactory(factory.django.DjangoModelFactory):
     user = factory.SubFactory(UserFactory)
     full_name = factory.Faker('name', locale='pt_BR')
     headline = factory.Faker('job', locale='pt_BR')
+
+
+class EmailAccountFactory(factory.django.DjangoModelFactory):
+    class Meta:
+        model = EmailAccount
+
+    user = factory.SubFactory(UserFactory)
+    provider = EmailAccount.Provider.GMAIL
+    email_address = factory.Sequence(lambda n: f'conta_{n}@gmail.com')
+
+
+class EmailSenderRuleFactory(factory.django.DjangoModelFactory):
+    class Meta:
+        model = EmailSenderRule
+
+    email_account = factory.SubFactory(EmailAccountFactory)
+    name = factory.Sequence(lambda n: f'Regra {n}')
+    sender_domain = '@empresa.com'
+
+
+class InboundEmailFactory(factory.django.DjangoModelFactory):
+    class Meta:
+        model = InboundEmail
+
+    message_id = factory.Sequence(lambda n: f'msg-{n}')
+    email_account = factory.SubFactory(EmailAccountFactory)
+    sender = factory.Sequence(lambda n: f'remetente_{n}@empresa.com')
+    subject = factory.Sequence(lambda n: f'Assunto {n}')
+    received_at = factory.LazyFunction(timezone.now)

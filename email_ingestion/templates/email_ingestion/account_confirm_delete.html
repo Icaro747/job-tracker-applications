@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}Excluir conta de e-mail{% endblock %}
+
+{% block content %}
+  <div class="card">
+    <h2>Excluir conta de e-mail</h2>
+    <p>Tem certeza que deseja excluir <strong>{{ account.email_address }}</strong>?
+       As regras e o vinculo dos e-mails capturados serao removidos.</p>
+    <form method="post">
+      {% csrf_token %}
+      <div class="actions">
+        <button type="submit" class="btn-danger">Excluir</button>
+        <a href="{% url 'email_ingestion:account_detail' account.pk %}">Cancelar</a>
+      </div>
+    </form>
+  </div>
+{% endblock %}

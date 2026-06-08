@@ -49,10 +49,15 @@ class User(AbstractUser):
         """
         from applications.models import Company, Job, JobApplication
         from candidate_profile.models import CandidateProfile
+        from email_ingestion.models import EmailAccount
 
         now = timezone.now()
         self.deleted_at = now
         self.save(update_fields=['deleted_at'])
+
+        # As contas de e-mail sao sempre removidas (em ambos os modos): as
+        # credenciais OAuth nao tem valor sem o dono.
+        EmailAccount.objects.filter(user=self).delete()
 
         if keep_global_data:
             return
