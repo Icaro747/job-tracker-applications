@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block title %}{{ account.email_address }}{% endblock %}
+
+{% block content %}
+  <h2>{{ account.email_address }}</h2>
+  <div class="actions">
+    <a class="btn btn-secondary" href="{% url 'email_ingestion:account_update' account.pk %}">Editar varredura</a>
+    <form class="inline-form" method="post" action="{% url 'email_ingestion:account_toggle_active' account.pk %}">
+      {% csrf_token %}
+      <button type="submit" class="btn-secondary">{% if account.is_active %}Desativar{% else %}Ativar{% endif %}</button>
+    </form>
+    <form class="inline-form" method="post" action="{% url 'email_ingestion:account_disconnect' account.pk %}">
+      {% csrf_token %}
+      <button type="submit" class="btn-danger">Desconectar</button>
+    </form>
+    <a class="btn btn-danger" href="{% url 'email_ingestion:account_delete' account.pk %}">Excluir</a>
+    <a href="{% url 'email_ingestion:account_list' %}">← Voltar</a>
+  </div>
+
+  <div class="panel">
+    <p><strong>Provedor:</strong> {{ account.get_provider_display }}</p>
+    <p><strong>Ativa para varredura:</strong> {% if account.is_active %}Sim{% else %}Nao{% endif %}</p>
+    <p><strong>Horarios de varredura:</strong> {{ account.scan_times|join:", " }}</p>
+    <p><strong>Ultima varredura:</strong> {{ account.last_scan_at|default:"—" }}</p>
+  </div>
+
+  <div class="panel">
+    <h3>Regras de varredura</h3>
+    <div class="actions">
+      <a class="btn" href="{% url 'email_ingestion:rule_create' account.pk %}">+ Nova regra</a>
+    </div>
+    {% if rules %}
+      <table>
+        <thead>
+          <tr><th>Nome</th><th>Remetente</th><th>Dominio</th><th>Palavras-chave</th><th>Empresa</th><th>Ativa</th><th></th></tr>
+        </thead>
+        <tbody>
+          {% for rule in rules %}
+            <tr>
+              <td>{{ rule.name }}</td>
+              <td>{{ rule.sender_email|default:"-" }}</td>
+              <td>{{ rule.sender_domain|default:"-" }}</td>
+              <td>{{ rule.subject_keywords|join:", "|default:"-" }}</td>
+              <td>{{ rule.company|default:"—" }}</td>
+              <td>{% if rule.is_active %}Sim{% else %}Nao{% endif %}</td>
+              <td>
+                <a href="{% url 'email_ingestion:rule_update' rule.pk %}">Editar</a>
+                · <a href="{% url 'email_ingestion:rule_delete' rule.pk %}">Excluir</a>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <p class="help">Nenhuma regra cadastrada. Sem regras, nenhum e-mail e capturado.</p>
+    {% endif %}
+  </div>
+
+  <div class="panel">
+    <h3>E-mails capturados recentemente</h3>
+    {% if recent_emails %}
+      <table>
+        <thead>
+          <tr><th>Assunto</th><th>Remetente</th><th>Status</th><th>Recebido</th></tr>
+        </thead>
+        <tbody>
+          {% for email in recent_emails %}
+            <tr>
+              <td>{{ email.subject }}</td>
+              <td>{{ email.sender }}</td>
+              <td>{{ email.get_processing_status_display }}</td>
+              <td>{{ email.received_at }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <p class="help">Nenhum e-mail capturado ainda.</p>
+    {% endif %}
+  </div>
+{% endblock %}

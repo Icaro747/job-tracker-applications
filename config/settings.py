@@ -17,6 +17,25 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 
+def load_local_env(env_path: Path) -> None:
+    """Carrega pares KEY=VALUE de .env local sem sobrescrever o ambiente real."""
+    if not env_path.exists():
+        return
+
+    for raw_line in env_path.read_text(encoding='utf-8').splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith('#') or '=' not in line:
+            continue
+        key, value = line.split('=', 1)
+        key = key.strip()
+        value = value.strip().strip('"').strip("'")
+        if key:
+            os.environ.setdefault(key, value)
+
+
+load_local_env(BASE_DIR / '.env')
+
+
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/
 
@@ -28,6 +47,10 @@ SECRET_KEY = os.environ.get(
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.environ.get('DJANGO_DEBUG', 'true').lower() == 'true'
+
+if DEBUG:
+    # Permite callback OAuth em http://localhost durante desenvolvimento local.
+    os.environ.setdefault('OAUTHLIB_INSECURE_TRANSPORT', '1')
 
 ALLOWED_HOSTS = os.environ.get('DJANGO_ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
 
@@ -164,6 +187,25 @@ LOGIN_REDIRECT_URL = 'home'
 LOGIN_URL = 'account_login'
 ACCOUNT_LOGOUT_REDIRECT_URL = 'account_login'
 
+# Credenciais OAuth do Google (login allauth + conexao Gmail da Etapa 3).
+# Vem do ambiente; enquanto vazias, o login social e a conexao Gmail ficam
+# inativos (a UI degrada com mensagem amigavel).
+GOOGLE_OAUTH_CLIENT_ID = os.environ.get('GOOGLE_OAUTH_CLIENT_ID', '')
+GOOGLE_OAUTH_CLIENT_SECRET = os.environ.get('GOOGLE_OAUTH_CLIENT_SECRET', '')
+
+# Escopos usados especificamente para conectar o Gmail (leitura). Restrito pelo
+# Google — exige verificacao OAuth para uso publico (ver .specs/11).
+GMAIL_OAUTH_SCOPES = [
+    'openid',
+    'https://www.googleapis.com/auth/userinfo.email',
+    'https://www.googleapis.com/auth/userinfo.profile',
+    'https://www.googleapis.com/auth/gmail.readonly',
+]
+# Precisa bater exatamente com o redirect cadastrado no Google Cloud.
+GMAIL_REDIRECT_URI = os.environ.get(
+    'GMAIL_REDIRECT_URI', 'http://localhost:8000/email/gmail/callback/'
+)
+
 # O mesmo fluxo OAuth do Google autentica o usuario e, futuramente, autoriza
 # o acesso ao Gmail (Etapa 3). As credenciais vem do ambiente — o provider so
 # fica utilizavel apos GOOGLE_OAUTH_CLIENT_ID/SECRET serem definidos.
@@ -171,8 +213,8 @@ SOCIALACCOUNT_PROVIDERS = {
     'google': {
         'APPS': [
             {
-                'client_id': os.environ.get('GOOGLE_OAUTH_CLIENT_ID', ''),
-                'secret': os.environ.get('GOOGLE_OAUTH_CLIENT_SECRET', ''),
+                'client_id': GOOGLE_OAUTH_CLIENT_ID,
+                'secret': GOOGLE_OAUTH_CLIENT_SECRET,
                 'key': '',
             },
         ],

@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Editar conta de e-mail{% endblock %}
+
+{% block content %}
+  <div class="card">
+    <h2>Editar varredura — {{ form.instance.email_address }}</h2>
+    <form method="post">
+      {% csrf_token %}
+      {{ form.as_p }}
+      <div class="actions">
+        <button type="submit">Salvar</button>
+        <a href="{% url 'email_ingestion:account_detail' form.instance.pk %}">Cancelar</a>
+      </div>
+    </form>
+  </div>
+{% endblock %}
