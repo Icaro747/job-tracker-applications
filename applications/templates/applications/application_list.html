@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Minhas candidaturas{% endblock %}
+
+{% block content %}
+  <div class="actions">
+    <a class="btn" href="{% url 'applications:application_create' %}">+ Nova candidatura</a>
+  </div>
+
+  {% if applications %}
+    <table>
+      <thead>
+        <tr><th>Vaga</th><th>Empresa</th><th>Status</th><th>Proxima acao</th></tr>
+      </thead>
+      <tbody>
+        {% for application in applications %}
+          <tr>
+            <td><a href="{{ application.get_absolute_url }}">{{ application.job.role_title }}</a></td>
+            <td>{{ application.job.company.name }}</td>
+            <td><span class="badge badge-{{ application.status }}">{{ application.get_status_display }}</span></td>
+            <td>
+              {% if application.next_action_at %}
+                <span class="{% if application.next_action_overdue %}overdue{% endif %}">{{ application.next_action_at }}</span>
+              {% else %}-{% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <div class="empty">Voce ainda nao tem candidaturas. Crie a primeira para comecar a acompanhar.</div>
+  {% endif %}
+{% endblock %}

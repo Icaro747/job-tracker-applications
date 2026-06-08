@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}Empresas{% endblock %}
+
+{% block content %}
+  <div class="actions">
+    <a class="btn" href="{% url 'applications:company_create' %}">+ Nova empresa</a>
+  </div>
+
+  {% if companies %}
+    <table>
+      <thead>
+        <tr><th>Nome</th><th>Site</th><th>Vagas</th></tr>
+      </thead>
+      <tbody>
+        {% for company in companies %}
+          <tr>
+            <td><a href="{{ company.get_absolute_url }}">{{ company.name }}</a></td>
+            <td>{{ company.website|default:"-" }}</td>
+            <td>{{ company.jobs.count }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <div class="empty">Nenhuma empresa cadastrada ainda.</div>
+  {% endif %}
+{% endblock %}

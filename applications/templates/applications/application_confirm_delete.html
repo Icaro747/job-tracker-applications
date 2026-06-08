@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}Excluir candidatura{% endblock %}
+
+{% block content %}
+  <div class="card">
+    <h2>Excluir candidatura</h2>
+    <p>Tem certeza que deseja excluir sua candidatura para
+       <strong>{{ application.job.role_title }}</strong> ({{ application.job.company.name }})?</p>
+    <form method="post">
+      {% csrf_token %}
+      <div class="actions">
+        <button type="submit" class="btn-danger">Excluir</button>
+        <a href="{{ application.get_absolute_url }}">Cancelar</a>
+      </div>
+    </form>
+  </div>
+{% endblock %}

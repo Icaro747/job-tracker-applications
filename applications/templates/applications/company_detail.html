@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}{{ company.name }}{% endblock %}
+
+{% block content %}
+  <h2>{{ company.name }}</h2>
+  <div class="actions">
+    <a class="btn btn-secondary" href="{% url 'applications:company_update' company.pk %}">Editar</a>
+    <a class="btn btn-danger" href="{% url 'applications:company_delete' company.pk %}">Excluir</a>
+    <a href="{% url 'applications:company_list' %}">← Voltar</a>
+  </div>
+
+  <div class="panel">
+    <p><strong>Site:</strong> {{ company.website|default:"-" }}</p>
+    <p><strong>Pagina de carreiras:</strong> {{ company.careers_page|default:"-" }}</p>
+    <p><strong>Observacoes:</strong> {{ company.notes|default:"-"|linebreaksbr }}</p>
+    <p class="help">Criada por {{ company.created_by|default:"—" }} em {{ company.created_at }}</p>
+  </div>
+
+  <div class="panel">
+    <h3>Vagas desta empresa</h3>
+    {% if jobs %}
+      <ul>
+        {% for job in jobs %}
+          <li><a href="{{ job.get_absolute_url }}">{{ job.role_title }}</a></li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="help">Nenhuma vaga cadastrada.</p>
+    {% endif %}
+  </div>
+
+  <div class="panel">
+    <h3>Historico de auditoria</h3>
+    {% if audit_logs %}
+      <table>
+        <thead>
+          <tr><th>Quando</th><th>Acao</th><th>Campo</th><th>De</th><th>Para</th><th>Por</th></tr>
+        </thead>
+        <tbody>
+          {% for log in audit_logs %}
+            <tr>
+              <td>{{ log.changed_at }}</td>
+              <td>{{ log.get_action_display }}</td>
+              <td>{{ log.field_name|default:"-" }}</td>
+              <td>{{ log.old_value|default:"-" }}</td>
+              <td>{{ log.new_value|default:"-" }}</td>
+              <td>{{ log.user|default:"—" }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <p class="help">Nenhum registro de auditoria.</p>
+    {% endif %}
+  </div>
+{% endblock %}

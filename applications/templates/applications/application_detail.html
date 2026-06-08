@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}{{ application.job.role_title }}{% endblock %}
+
+{% block content %}
+  <h2>{{ application.job.role_title }}</h2>
+  <p class="help">
+    <a href="{{ application.job.company.get_absolute_url }}">{{ application.job.company.name }}</a>
+    · Origem: {{ application.get_origin_display }}
+    {% if application.applied_at %}· Enviada em {{ application.applied_at }}{% endif %}
+  </p>
+
+  <div class="actions">
+    <a class="btn btn-secondary" href="{% url 'applications:application_update' application.pk %}">Editar</a>
+    <a class="btn btn-danger" href="{% url 'applications:application_delete' application.pk %}">Excluir</a>
+    <a href="{% url 'applications:application_list' %}">← Voltar</a>
+  </div>
+
+  {% if application.notes %}
+    <div class="panel"><h3>Observacoes</h3><p>{{ application.notes|linebreaksbr }}</p></div>
+  {% endif %}
+
+  {% include "applications/_detail_panels.html" %}
+{% endblock %}

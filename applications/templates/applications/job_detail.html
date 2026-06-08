@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}{{ job.role_title }}{% endblock %}
+
+{% block content %}
+  <h2>{{ job.role_title }}</h2>
+  <div class="actions">
+    <a class="btn" href="{% url 'applications:application_create' %}?job={{ job.pk }}">Candidatar-se</a>
+    <a class="btn btn-secondary" href="{% url 'applications:job_update' job.pk %}">Editar</a>
+    <a class="btn btn-danger" href="{% url 'applications:job_delete' job.pk %}">Excluir</a>
+    <a href="{% url 'applications:job_list' %}">← Voltar</a>
+  </div>
+
+  <div class="panel">
+    <p><strong>Empresa:</strong> <a href="{{ job.company.get_absolute_url }}">{{ job.company.name }}</a></p>
+    <p><strong>Local:</strong> {{ job.location|default:"-" }} {% if job.remote %}<span class="tag">remoto</span>{% endif %}</p>
+    <p><strong>Link:</strong> {% if job.source_url %}<a href="{{ job.source_url }}">{{ job.source_url }}</a>{% else %}-{% endif %}</p>
+    {% if job.directed_to %}<p><span class="tag">Direcionada para {{ job.directed_to }}</span></p>{% endif %}
+  </div>
+{% endblock %}

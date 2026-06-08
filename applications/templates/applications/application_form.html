@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}{% if form.instance.pk %}Editar candidatura{% else %}Nova candidatura{% endif %}{% endblock %}
+
+{% block content %}
+  <div class="card">
+    <h2>{% if form.instance.pk %}Editar candidatura{% else %}Nova candidatura{% endif %}</h2>
+    <form method="post">
+      {% csrf_token %}
+      {{ form.as_p }}
+      <div class="actions">
+        <button type="submit">Salvar</button>
+        <a href="{% url 'applications:application_list' %}">Cancelar</a>
+      </div>
+    </form>
+    <p class="help">Nao encontrou a vaga? <a href="{% url 'applications:job_create' %}">Cadastre uma nova vaga</a> primeiro.</p>
+  </div>
+{% endblock %}

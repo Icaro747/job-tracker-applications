@@ -1,7 +1,14 @@
 import factory
 from django.contrib.auth import get_user_model
 
-from applications.models import Company, Job, JobApplication
+from django.utils import timezone
+
+from applications.models import (
+    ApplicationTimelineEntry,
+    Company,
+    Job,
+    JobApplication,
+)
 from candidate_profile.models import CandidateProfile
 
 User = get_user_model()
@@ -53,6 +60,16 @@ class JobApplicationFactory(factory.django.DjangoModelFactory):
     job = factory.SubFactory(JobFactory)
     status = JobApplication.Status.DRAFT
     origin = JobApplication.Origin.MANUAL
+
+
+class ApplicationTimelineEntryFactory(factory.django.DjangoModelFactory):
+    class Meta:
+        model = ApplicationTimelineEntry
+
+    application = factory.SubFactory(JobApplicationFactory)
+    entry_type = ApplicationTimelineEntry.EntryType.MANUAL_NOTE
+    title = factory.Sequence(lambda n: f'Evento {n}')
+    occurred_at = factory.LazyFunction(timezone.now)
 
 
 class CandidateProfileFactory(factory.django.DjangoModelFactory):
