@@ -1,0 +1,58 @@
+{% load static %}
+<div class="panel" id="email-{{ email.pk }}">
+  <div class="actions" style="justify-content: space-between;">
+    <strong>{{ email.subject }}</strong>
+    <span class="badge">{{ email.get_processing_status_display }}</span>
+  </div>
+  <p class="help">De {{ email.sender }} · recebido em {{ email.received_at }}
+    {% if email.provider_link %}· <a href="{{ email.provider_link }}" target="_blank" rel="noopener">abrir no provedor</a>{% endif %}
+  </p>
+
+  {% with c=email.classification %}
+    {% if c %}
+      <p><strong>Resumo:</strong> {{ c.summary|default:"—" }}</p>
+      <p><strong>Status sugerido:</strong> {{ c.suggested_status|default:"—" }}
+        · <strong>Confianca:</strong> {{ c.confidence }}%</p>
+      {% if c.rationale %}<p class="help"><strong>Racional:</strong> {{ c.rationale }}</p>{% endif %}
+      {% if c.reviewed_at %}<p class="help">Revisado por {{ c.reviewed_by|default:"sistema" }} em {{ c.reviewed_at }}.</p>{% endif %}
+    {% else %}
+      <p class="help">Sem classificacao registrada.</p>
+    {% endif %}
+  {% endwith %}
+
+  {% if email.processing_status != 'ignored' %}
+    <form class="actions"
+          hx-post="{% url 'email_ingestion:email_confirm' email.pk %}"
+          hx-target="#email-{{ email.pk }}"
+          hx-swap="outerHTML">
+      <label>Candidatura
+        <select name="application">
+          <option value="">— selecione —</option>
+          {% for app in applications %}
+            <option value="{{ app.pk }}" {% if app.pk == email.application_id %}selected{% endif %}>
+              {{ app.job.company.name }} — {{ app.job.role_title }}
+            </option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>Aplicar status
+        <select name="status">
+          <option value="">(manter)</option>
+          {% for value, label in status_choices %}
+            <option value="{{ value }}" {% if value == email.inferred_application_status %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <button type="submit">Confirmar e aplicar</button>
+    </form>
+
+    <form class="inline-form"
+          hx-post="{% url 'email_ingestion:email_ignore' email.pk %}"
+          hx-target="#email-{{ email.pk }}"
+          hx-swap="outerHTML">
+      <button type="submit" class="btn-secondary">Ignorar</button>
+    </form>
+  {% else %}
+    <p class="help">E-mail ignorado.</p>
+  {% endif %}
+</div>

@@ -8,6 +8,12 @@ from tests.factories import EmailAccountFactory, EmailSenderRuleFactory, Inbound
 pytestmark = pytest.mark.django_db
 
 
+@pytest.fixture(autouse=True)
+def _no_classification(monkeypatch):
+    """Isola a Fila 1: a classificacao (Fila 2) e testada a parte, sem rede."""
+    monkeypatch.setattr('email_ingestion.services.classify_email', lambda email: None)
+
+
 def test_scan_captures_only_matching_emails():
     account = EmailAccountFactory()
     EmailSenderRuleFactory(email_account=account, sender_domain='@empresa.com')

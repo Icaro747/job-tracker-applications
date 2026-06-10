@@ -1,14 +1,36 @@
 import pytest
 from django.core.exceptions import ValidationError
 
-from email_ingestion.models import EmailSenderRule
+from email_ingestion.models import EmailAccount, EmailSenderRule
 from tests.email_ingestion.fakes import make_message
-from tests.factories import EmailAccountFactory
+from tests.factories import (
+    EmailAccountFactory,
+    EmailClassificationFactory,
+    InboundEmailFactory,
+    UserFactory,
+)
 
 
 def test_scan_times_default_is_midnight(db):
     account = EmailAccountFactory()
     assert account.scan_times == ['00:00']
+
+
+def test_classification_reviewed_by_can_be_set(db):
+    reviewer = UserFactory()
+    classification = EmailClassificationFactory(reviewed_by=reviewer)
+    assert classification.reviewed_by == reviewer
+
+
+def test_provider_link_for_gmail(db):
+    email = InboundEmailFactory(message_id='abc123')
+    assert email.email_account.provider == EmailAccount.Provider.GMAIL
+    assert email.provider_link.endswith('/#all/abc123')
+
+
+def test_provider_link_empty_without_account(db):
+    email = InboundEmailFactory(email_account=None)
+    assert email.provider_link == ''
 
 
 def test_rule_requires_at_least_one_filter():

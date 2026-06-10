@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}Revisao de classificacoes{% endblock %}
+
+{% block content %}
+  <h2>Revisao de classificacoes</h2>
+  <p class="help">E-mails processados pela classificacao automatica. Confirme, edite o status,
+    vincule a candidatura correta ou ignore.</p>
+
+  {% for email in emails %}
+    {% include "email_ingestion/_review_row.html" %}
+  {% empty %}
+    <p class="empty">Nenhum e-mail processado ainda. Rode a varredura para capturar e classificar e-mails.</p>
+  {% endfor %}
+{% endblock %}

@@ -24,4 +24,9 @@ urlpatterns = [
     ),
     path('regras/<int:pk>/editar/', views.EmailSenderRuleUpdateView.as_view(), name='rule_update'),
     path('regras/<int:pk>/excluir/', views.EmailSenderRuleDeleteView.as_view(), name='rule_delete'),
+    # Tela de revisao de classificacoes (Fila 2)
+    path('revisao/', views.ClassificationReviewListView.as_view(), name='review_list'),
+    path('revisao/<int:pk>/confirmar/', views.email_confirm_apply, name='email_confirm'),
+    path('revisao/<int:pk>/vincular/', views.email_link_application, name='email_link'),
+    path('revisao/<int:pk>/ignorar/', views.email_ignore, name='email_ignore'),
 ]

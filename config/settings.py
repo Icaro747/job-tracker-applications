@@ -206,6 +206,19 @@ GMAIL_REDIRECT_URI = os.environ.get(
     'GMAIL_REDIRECT_URI', 'http://localhost:8000/email/gmail/callback/'
 )
 
+# Classificacao por LLM (Etapa 4 — Fila 2).
+# O Ollama roda localmente; o acesso e isolado por um adaptador (classifiers/).
+# Tudo configuravel pelo ambiente para que cada instancia ajuste modelo e limiar
+# sem alterar codigo. Com o Ollama offline, a classificacao degrada deixando o
+# e-mail pendente (ver email_ingestion/services.classify_email).
+OLLAMA_HOST = os.environ.get('OLLAMA_HOST', 'http://localhost:11434')
+OLLAMA_MODEL = os.environ.get('OLLAMA_MODEL', 'llama3.2')
+LLM_TIMEOUT = int(os.environ.get('LLM_TIMEOUT', '60'))
+# Acima deste limiar (0-100) a classificacao e aplicada automaticamente; abaixo,
+# o e-mail aguarda revisao manual.
+LLM_CONFIDENCE_THRESHOLD = int(os.environ.get('LLM_CONFIDENCE_THRESHOLD', '80'))
+
+
 # O mesmo fluxo OAuth do Google autentica o usuario e, futuramente, autoriza
 # o acesso ao Gmail (Etapa 3). As credenciais vem do ambiente — o provider so
 # fica utilizavel apos GOOGLE_OAUTH_CLIENT_ID/SECRET serem definidos.

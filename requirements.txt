@@ -10,6 +10,9 @@ google-api-python-client==2.184.0
 google-auth==2.41.1
 google-auth-oauthlib==1.2.2
 
+# Classificacao LLM (Etapa 4) — cliente HTTP do Ollama
+requests==2.34.2
+
 # Desenvolvimento / TDD
 pytest==9.0.3
 pytest-django==4.12.0

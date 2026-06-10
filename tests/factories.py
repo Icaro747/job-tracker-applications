@@ -10,7 +10,12 @@ from applications.models import (
     JobApplication,
 )
 from candidate_profile.models import CandidateProfile
-from email_ingestion.models import EmailAccount, EmailSenderRule, InboundEmail
+from email_ingestion.models import (
+    EmailAccount,
+    EmailClassification,
+    EmailSenderRule,
+    InboundEmail,
+)
 
 User = get_user_model()
 
@@ -109,3 +114,14 @@ class InboundEmailFactory(factory.django.DjangoModelFactory):
     sender = factory.Sequence(lambda n: f'remetente_{n}@empresa.com')
     subject = factory.Sequence(lambda n: f'Assunto {n}')
     received_at = factory.LazyFunction(timezone.now)
+
+
+class EmailClassificationFactory(factory.django.DjangoModelFactory):
+    class Meta:
+        model = EmailClassification
+
+    email = factory.SubFactory(InboundEmailFactory)
+    confidence = 90
+    summary = factory.Sequence(lambda n: f'Resumo {n}')
+    suggested_status = JobApplication.Status.INTERVIEW
+    rationale = 'Justificativa de teste'

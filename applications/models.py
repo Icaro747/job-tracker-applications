@@ -306,6 +306,25 @@ class JobApplication(models.Model):
             occurred_at=occurred_at or timezone.now(),
         )
 
+    def register_email_update(self, *, email, new_status='', summary=''):
+        """Registra uma atualizacao vinda de e-mail na linha do tempo.
+
+        Cria uma entrada ``email_update`` (origem da atualizacao) e, quando
+        ``new_status`` e um status valido e diferente do atual, avanca o status
+        (o que gera a propria entrada ``status_change``). Retorna a entrada
+        ``email_update`` criada.
+        """
+        entry = ApplicationTimelineEntry.objects.create(
+            application=self,
+            entry_type=ApplicationTimelineEntry.EntryType.EMAIL_UPDATE,
+            title=f'E-mail: {email.subject}',
+            description=summary,
+            occurred_at=email.received_at,
+        )
+        if new_status and new_status in self.Status.values and new_status != self.status:
+            self.change_status(new_status, occurred_at=email.received_at)
+        return entry
+
 
 class ApplicationTimelineEntry(models.Model):
     """Linha do tempo append-only de eventos de uma candidatura."""

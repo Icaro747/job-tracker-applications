@@ -30,5 +30,5 @@ class InboundEmailAdmin(admin.ModelAdmin):
 
 @admin.register(EmailClassification)
 class EmailClassificationAdmin(admin.ModelAdmin):
-    list_display = ('email', 'suggested_status', 'confidence', 'reviewed_at')
+    list_display = ('email', 'suggested_status', 'confidence', 'reviewed_by', 'reviewed_at')
     search_fields = ('email__subject', 'summary', 'rationale')

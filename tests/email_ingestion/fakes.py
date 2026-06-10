@@ -1,5 +1,10 @@
 """Adaptador fake para testar o pipeline sem chamar o Google."""
 from email_ingestion.adapters.base import EmailProviderAdapter, FetchedMessage
+from email_ingestion.classifiers.base import (
+    ClassificationResult,
+    ClassifierError,
+    LLMClassifierAdapter,
+)
 
 
 def make_message(message_id='msg-1', sender='rh@empresa.com', subject='Assunto', **kwargs):
@@ -33,3 +38,22 @@ class FakeAdapter(EmailProviderAdapter):
     def revoke(self):
         self.revoked = True
         self.account.clear_credentials()
+
+
+class FakeClassifier(LLMClassifierAdapter):
+    """Classificador de LLM fake — devolve um resultado canonico sem rede.
+
+    Passe ``result`` para controlar a saida, ou ``error=True`` para simular a
+    indisponibilidade do Ollama (levanta ``ClassifierError``).
+    """
+
+    def __init__(self, result=None, *, error=False):
+        self.result = result or ClassificationResult()
+        self.error = error
+        self.calls = []
+
+    def classify(self, email, applications):
+        self.calls.append((email, list(applications)))
+        if self.error:
+            raise ClassifierError('Ollama indisponivel (fake)')
+        return self.result

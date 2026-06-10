@@ -175,6 +175,17 @@ class InboundEmail(models.Model):
     def __str__(self):
         return f'{self.subject} - {self.sender}'
 
+    @property
+    def provider_link(self):
+        """Link best-effort para o e-mail original no provedor (Gmail).
+
+        Usa o ``message_id`` da API do Gmail num deep-link da interface web.
+        Retorna ``''`` para provedores sem link conhecido.
+        """
+        if self.email_account and self.email_account.provider == EmailAccount.Provider.GMAIL:
+            return f'https://mail.google.com/mail/u/0/#all/{self.message_id}'
+        return ''
+
 
 class EmailClassification(models.Model):
     """Resultado da analise do LLM para um e-mail (preenchido na Etapa 4)."""
@@ -186,6 +197,13 @@ class EmailClassification(models.Model):
     summary = models.TextField(blank=True)
     suggested_status = models.CharField(max_length=30, blank=True)
     rationale = models.TextField(blank=True)
+    reviewed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='reviewed_classifications',
+    )
     reviewed_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
