@@ -101,13 +101,25 @@ class GmailAdapter(EmailProviderAdapter):
         return ''
 
     # -- revogacao ---------------------------------------------------------- #
-    def revoke(self) -> None:
+    def revoke(self) -> bool:
+        import logging
+
         import requests
 
+        remote_ok = True
         token = self.account.refresh_token or self.account.access_token
         if token:
             try:
-                requests.post(GMAIL_REVOKE_URI, params={'token': token}, timeout=10)
+                response = requests.post(
+                    GMAIL_REVOKE_URI, params={'token': token}, timeout=10
+                )
+                response.raise_for_status()
             except requests.RequestException:
-                pass
+                remote_ok = False
+                logging.getLogger(__name__).warning(
+                    'Falha ao revogar o token no Google para a conta %s; '
+                    'credenciais locais limpas, mas a concessao pode seguir ativa.',
+                    self.account.email_address,
+                )
         self.account.clear_credentials()
+        return remote_ok

@@ -42,5 +42,11 @@ class EmailProviderAdapter(ABC):
         """Busca mensagens recebidas apos ``since`` (ou todas, se ``None``)."""
 
     @abstractmethod
-    def revoke(self) -> None:
-        """Revoga o acesso e limpa as credenciais (desconectar a conta)."""
+    def revoke(self) -> bool:
+        """Revoga o acesso e limpa as credenciais (desconectar a conta).
+
+        Retorna ``True`` se a revogacao remota foi confirmada (ou nao havia o
+        que revogar) e ``False`` se a chamada ao provedor falhou — nesse caso a
+        concessao pode seguir ativa no provedor, ainda que as credenciais locais
+        tenham sido limpas.
+        """

@@ -13,6 +13,8 @@ https://docs.djangoproject.com/en/6.0/ref/settings/
 import os
 from pathlib import Path
 
+from django.core.exceptions import ImproperlyConfigured
+
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -33,26 +35,48 @@ def load_local_env(env_path: Path) -> None:
             os.environ.setdefault(key, value)
 
 
-load_local_env(BASE_DIR / '.env')
+# DJANGO_SKIP_DOTENV=1 ignora o .env local (usado em testes/CI para validar a
+# configuracao de producao com um ambiente totalmente controlado).
+if not os.environ.get('DJANGO_SKIP_DOTENV'):
+    load_local_env(BASE_DIR / '.env')
 
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/
 
-# SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = os.environ.get(
-    'DJANGO_SECRET_KEY',
-    'django-insecure-local-development-key-change-before-production',
-)
-
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.environ.get('DJANGO_DEBUG', 'true').lower() == 'true'
+
+# SECURITY WARNING: keep the secret key used in production secret!
+# Em producao a chave e obrigatoria; o fallback inseguro vale apenas em DEBUG.
+SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', '')
+if not SECRET_KEY:
+    if DEBUG:
+        SECRET_KEY = 'django-insecure-local-development-key-change-before-production'
+    else:
+        raise ImproperlyConfigured(
+            'DJANGO_SECRET_KEY e obrigatoria em producao.'
+        )
 
 if DEBUG:
     # Permite callback OAuth em http://localhost durante desenvolvimento local.
     os.environ.setdefault('OAUTHLIB_INSECURE_TRANSPORT', '1')
 
 ALLOWED_HOSTS = os.environ.get('DJANGO_ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
+
+# Chave de criptografia dos tokens OAuth em repouso (Fernet, urlsafe-base64 de
+# 32 bytes). Gere uma com:
+#   python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+# Em producao e obrigatoria; em DEBUG ha um fallback inseguro so para dev/testes.
+FIELD_ENCRYPTION_KEY = os.environ.get('DJANGO_FIELD_ENCRYPTION_KEY', '')
+if not FIELD_ENCRYPTION_KEY:
+    if DEBUG:
+        FIELD_ENCRYPTION_KEY = 'ZGV2LWluc2VjdXJlLWtleS1jaGFuZ2UtaW4tcHJvZCE='
+    else:
+        raise ImproperlyConfigured(
+            'DJANGO_FIELD_ENCRYPTION_KEY e obrigatoria em producao para '
+            'criptografar os tokens OAuth.'
+        )
 
 
 # Application definition
@@ -114,10 +138,13 @@ WSGI_APPLICATION = 'config.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/6.0/ref/settings/#databases
 
+# O caminho do banco vem do ambiente. Em producao (e tambem em dev), aponte
+# DJANGO_DB_PATH para fora de pastas sincronizadas (OneDrive/Dropbox/etc.) — o
+# banco guarda tokens e corpos de e-mail e nao deve ser replicado para a nuvem.
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+        'NAME': os.environ.get('DJANGO_DB_PATH', BASE_DIR / 'db.sqlite3'),
     }
 }
 
@@ -235,3 +262,17 @@ SOCIALACCOUNT_PROVIDERS = {
         'AUTH_PARAMS': {'access_type': 'offline'},
     },
 }
+
+
+# Endurecimento de producao. Ativado somente fora de DEBUG para nao atrapalhar o
+# desenvolvimento local (HTTP em localhost). Exige deploy atras de HTTPS.
+if not DEBUG:
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    SECURE_SSL_REDIRECT = True
+    SECURE_HSTS_SECONDS = 31536000  # 1 ano
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_PRELOAD = True
+    SECURE_CONTENT_TYPE_NOSNIFF = True
+    # Deploy tipico atras de proxy reverso (nginx/Caddy) que termina o TLS.
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
