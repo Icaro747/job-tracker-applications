@@ -50,3 +50,4 @@ python -m pip freeze > requirements.txt
 - [Fluxos principais](docs/main-flows.md)
 - [Arquitetura inicial](docs/architecture.md)
 - [Roadmap](docs/roadmap.md)
+- [IA local para analisar e-mails com Ollama](docs/ollama-analise-email.md)

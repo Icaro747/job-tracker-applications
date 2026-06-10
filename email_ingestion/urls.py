@@ -8,6 +8,7 @@ app_name = 'email_ingestion'
 urlpatterns = [
     # Contas de e-mail
     path('', views.EmailAccountListView.as_view(), name='account_list'),
+    path('diagnostico/', views.IntegrationDiagnosticsView.as_view(), name='diagnostics'),
     path('contas/<int:pk>/', views.EmailAccountDetailView.as_view(), name='account_detail'),
     path('contas/<int:pk>/editar/', views.EmailAccountUpdateView.as_view(), name='account_update'),
     path('contas/<int:pk>/excluir/', views.EmailAccountDeleteView.as_view(), name='account_delete'),

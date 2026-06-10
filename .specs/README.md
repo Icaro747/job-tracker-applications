@@ -18,6 +18,7 @@ Documentacao arquitetural do Gerenciador de Candidaturas. Cada arquivo descreve 
 | [09-perfil-candidato.md](09-perfil-candidato.md) | Dados do curriculo, experiencias, formacao, competencias, respostas salvas |
 | [10-modelos-dados.md](10-modelos-dados.md) | Referencia completa de todos os modelos: campos, tipos, restricoes e proposito de cada campo |
 | [11-integracao-google-gmail.md](11-integracao-google-gmail.md) | Configuracao burocratica do Google Cloud, Gmail API, OAuth, verificacao e seguranca |
+| [12-melhorias-etapa-4.md](12-melhorias-etapa-4.md) | Emenda a Etapa 4: fim do auto-aplicar (tudo vira sugestao), painel de marcos da candidatura, datas/indicador na vaga, migracao de dados legados |
 
 ## Etapas de construcao
 

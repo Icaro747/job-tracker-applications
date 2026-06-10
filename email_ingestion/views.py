@@ -25,6 +25,7 @@ from django.views.generic import (
 from applications.models import JobApplication
 
 from .adapters import get_adapter
+from .diagnostics import run_diagnostics
 from .forms import EmailAccountForm, EmailSenderRuleForm
 from .models import EmailAccount, EmailSenderRule, InboundEmail
 
@@ -66,6 +67,16 @@ class EmailAccountDeleteView(OwnedEmailAccountMixin, DeleteView):
     template_name = 'email_ingestion/account_confirm_delete.html'
     context_object_name = 'account'
     success_url = reverse_lazy('email_ingestion:account_list')
+
+
+class IntegrationDiagnosticsView(LoginRequiredMixin, ListView):
+    """Mostra o diagnostico das integracoes para o usuario autenticado."""
+
+    context_object_name = 'diagnostics'
+    template_name = 'email_ingestion/diagnostics.html'
+
+    def get_queryset(self):
+        return run_diagnostics(user=self.request.user)
 
 
 @login_required

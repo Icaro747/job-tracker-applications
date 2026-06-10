@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Diagnostico de integracoes{% endblock %}
+
+{% block content %}
+  <h2>Diagnostico de integracoes</h2>
+  <p class="help">Estado minimo das conexoes usadas pela varredura de e-mails e analise por IA.</p>
+
+  {% for item in diagnostics %}
+    <div class="panel">
+      <div class="actions" style="justify-content: space-between;">
+        <strong>{{ item.component|title }}</strong>
+        <span class="badge badge-{{ item.status }}">{{ item.status }}</span>
+      </div>
+      <p>{{ item.message }}</p>
+      {% if item.details %}
+        <ul>
+          {% for detail in item.details %}
+            <li>{{ detail }}</li>
+          {% endfor %}
+        </ul>
+      {% endif %}
+    </div>
+  {% empty %}
+    <div class="empty">Nenhum diagnostico disponivel.</div>
+  {% endfor %}
+{% endblock %}
