@@ -64,6 +64,22 @@ def test_disconnect_calls_revoke(auth_client, user, monkeypatch):
     assert account.is_active is False
 
 
+def test_disconnect_warns_when_remote_revoke_fails(auth_client, user, monkeypatch):
+    from django.contrib.messages import get_messages
+
+    account = EmailAccountFactory(user=user, access_token='tok', refresh_token='ref')
+    adapter = FakeAdapter(account, revoke_succeeds=False)
+    monkeypatch.setattr('email_ingestion.views.get_adapter', lambda acc: adapter)
+
+    response = auth_client.post(reverse('email_ingestion:account_disconnect', args=[account.pk]))
+
+    levels = [m.level_tag for m in get_messages(response.wsgi_request)]
+    assert 'warning' in levels
+    # Credenciais locais sao limpas mesmo quando a revogacao remota falha.
+    account.refresh_from_db()
+    assert account.access_token == ''
+
+
 def test_toggle_active(auth_client, user):
     account = EmailAccountFactory(user=user, is_active=True)
     auth_client.post(reverse('email_ingestion:account_toggle_active', args=[account.pk]))
