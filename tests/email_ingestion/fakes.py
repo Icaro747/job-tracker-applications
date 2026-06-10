@@ -16,11 +16,12 @@ def make_message(message_id='msg-1', sender='rh@empresa.com', subject='Assunto',
 
 
 class FakeAdapter(EmailProviderAdapter):
-    def __init__(self, account, messages=None):
+    def __init__(self, account, messages=None, revoke_succeeds=True):
         super().__init__(account)
         self.messages = list(messages or [])
         self.authenticated = False
         self.revoked = False
+        self.revoke_succeeds = revoke_succeeds
         self.since = None
 
     def authenticate(self):
@@ -33,3 +34,4 @@ class FakeAdapter(EmailProviderAdapter):
     def revoke(self):
         self.revoked = True
         self.account.clear_credentials()
+        return self.revoke_succeeds

@@ -80,10 +80,19 @@ def account_disconnect(request, pk):
     """Revoga o acesso ao provedor e limpa as credenciais da conta."""
     account = get_object_or_404(EmailAccount, pk=pk, user=request.user)
     try:
-        get_adapter(account).revoke()
+        remote_ok = get_adapter(account).revoke()
     except NotImplementedError:
         account.clear_credentials()
-    messages.success(request, f'Conta {account.email_address} desconectada.')
+        remote_ok = True
+    if remote_ok:
+        messages.success(request, f'Conta {account.email_address} desconectada.')
+    else:
+        messages.warning(
+            request,
+            f'Conta {account.email_address} desconectada localmente, mas a revogacao '
+            'no Google falhou. Remova o acesso manualmente em '
+            'https://myaccount.google.com/permissions.',
+        )
     return redirect('email_ingestion:account_detail', pk=account.pk)
 
 

@@ -2,6 +2,8 @@ from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
 
+from .fields import EncryptedTextField
+
 
 def default_scan_times():
     """Padrao de varredura: uma vez por dia, a meia-noite."""
@@ -29,8 +31,8 @@ class EmailAccount(models.Model):
         max_length=20, choices=Provider.choices, default=Provider.GMAIL
     )
     email_address = models.EmailField()
-    access_token = models.TextField(blank=True)
-    refresh_token = models.TextField(blank=True)
+    access_token = EncryptedTextField(blank=True)
+    refresh_token = EncryptedTextField(blank=True)
     token_expiry = models.DateTimeField(null=True, blank=True)
     is_active = models.BooleanField(default=True)
     # Horarios de varredura no formato "HH:MM". Padrao: meia-noite.

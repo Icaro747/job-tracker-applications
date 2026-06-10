@@ -7,6 +7,16 @@
     <a class="btn" href="{% url 'email_ingestion:gmail_connect' %}">+ Conectar Gmail</a>
   </div>
 
+  <p class="help">
+    Ao conectar, o aplicativo recebe acesso de <strong>leitura</strong> à sua caixa do
+    Gmail para identificar atualizações de candidaturas. Apenas os e-mails que casam com
+    as suas regras de varredura são armazenados; o token de acesso é guardado
+    criptografado. Você pode revogar o acesso a qualquer momento clicando em
+    “Desconectar” ou em
+    <a href="https://myaccount.google.com/permissions" target="_blank" rel="noopener">
+    myaccount.google.com/permissions</a>.
+  </p>
+
   {% if accounts %}
     <table>
       <thead>
