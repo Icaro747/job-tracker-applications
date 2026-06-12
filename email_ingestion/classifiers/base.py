@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 
 class ClassifierError(Exception):
@@ -44,9 +44,12 @@ class ClassificationResult:
     rationale: str = ''
     # Candidatura aberta identificada como destinataria (id) ou None.
     application_id: int | None = None
-    # Quando o e-mail traz uma vaga nova (e nao atualizacao de processo existente).
-    is_new_opportunity: bool = False
-    opportunity: DetectedOpportunity | None = None
+    # Intencao sugerida pelo LLM (um valor de ``EmailClassification.Intent`` ou
+    # vazio). Escolhe qual fluxo de revisao o usuario ve no passo 1 (emenda 13).
+    intent: str = ''
+    # Vagas extraidas do e-mail: zero (atualizacao/irrelevante), uma (nova unica)
+    # ou varias (lista). Cada uma vira uma ``EmailDetectedOpportunity``.
+    opportunities: list[DetectedOpportunity] = field(default_factory=list)
 
 
 class LLMClassifierAdapter(ABC):

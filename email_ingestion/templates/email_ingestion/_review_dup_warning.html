@@ -1,0 +1,35 @@
+{# Aviso de duplicacao nao bloqueante (Fatia 4): reusar ou criar assim mesmo. #}
+{# ``create_url`` aponta para o endpoint que materializa (criar-vaga ou criar-candidatura). #}
+<div class="banner-warning">
+  {% if dup_kind == 'company' %}
+    <p>Possivel duplicata: ja existe a empresa
+      "<a href="{{ dup_record.get_absolute_url }}">{{ dup_record.name }}</a>".</p>
+  {% else %}
+    <p>Possivel duplicata: ja existe a vaga
+      "<a href="{{ dup_record.get_absolute_url }}">{{ dup_record.role_title }}</a>"
+      nesta empresa.</p>
+  {% endif %}
+</div>
+<div class="actions">
+  <form hx-post="{{ create_url }}" hx-target="#email-{{ email.pk }}" hx-swap="outerHTML">
+    <input type="hidden" name="company_name" value="{{ pending_company_name }}">
+    <input type="hidden" name="role_title" value="{{ pending_role_title }}">
+    <input type="hidden" name="source_url" value="{{ pending_source_url }}">
+    {% for k, v in pending_extra.items %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}
+    {% if dup_kind == 'company' %}
+      <input type="hidden" name="reuse_company_id" value="{{ dup_record.pk }}">
+      <button type="submit">Usar "{{ dup_record.name }}" existente</button>
+    {% else %}
+      <input type="hidden" name="reuse_job_id" value="{{ dup_record.pk }}">
+      <button type="submit">Usar vaga existente</button>
+    {% endif %}
+  </form>
+  <form hx-post="{{ create_url }}" hx-target="#email-{{ email.pk }}" hx-swap="outerHTML">
+    <input type="hidden" name="company_name" value="{{ pending_company_name }}">
+    <input type="hidden" name="role_title" value="{{ pending_role_title }}">
+    <input type="hidden" name="source_url" value="{{ pending_source_url }}">
+    {% for k, v in pending_extra.items %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}
+    <input type="hidden" name="force" value="1">
+    <button type="submit" class="btn-secondary">Criar assim mesmo</button>
+  </form>
+</div>

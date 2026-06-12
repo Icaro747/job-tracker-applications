@@ -1,0 +1,34 @@
+{% comment %}
+Bloco de origem e correspondencia da candidatura (Fatia 4).
+Espera: ``application``, ``linked_emails`` e ``viewer``. Os links "Ver origem"
+so aparecem para e-mails do proprio viewer.
+{% endcomment %}
+<div class="panel">
+  <h3>Origem e correspondencia</h3>
+
+  {% if application.origin == 'external' %}
+    <p>Origem externa.</p>
+  {% elif application.origin_email %}
+    <p><strong>Originada por:</strong> "{{ application.origin_email.subject }}" —
+      {{ application.origin_email.received_at|date:"d/m/Y" }}
+      {% if application.origin_email.email_account.user == viewer %}
+        <a href="{% url 'email_ingestion:email_detail' application.origin_email.pk %}">Ver origem</a>
+      {% endif %}
+    </p>
+  {% else %}
+    <p>Criada manualmente.</p>
+  {% endif %}
+
+  {% if linked_emails %}
+    <p><strong>E-mails vinculados:</strong></p>
+    <ul>
+      {% for item in linked_emails %}
+        <li>"{{ item.subject }}" — {{ item.received_at|date:"d/m/Y" }}
+          {% if item.email_account.user == viewer %}
+            <a href="{% url 'email_ingestion:email_detail' item.pk %}">ver</a>
+          {% endif %}
+        </li>
+      {% endfor %}
+    </ul>
+  {% endif %}
+</div>

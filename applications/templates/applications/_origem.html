@@ -1,0 +1,18 @@
+{% comment %}
+Bloco de origem (proveniencia, Fatia 4) para empresa/vaga.
+Espera: ``record`` (com source_email/created_by/created_at) e ``viewer``.
+O link "Ver origem" so aparece quando o e-mail de origem e do proprio viewer.
+{% endcomment %}
+<div class="panel">
+  <h3>Origem</h3>
+  {% if record.source_email and record.source_email.email_account.user == viewer %}
+    <p>Criada a partir do e-mail "{{ record.source_email.subject }}", recebido em
+      {{ record.source_email.received_at|date:"d/m/Y" }}.
+      <a href="{% url 'email_ingestion:email_detail' record.source_email.pk %}">Ver origem</a>
+    </p>
+  {% elif record.source_email %}
+    <p>Criada por {{ record.created_by|default:"—" }} em {{ record.created_at|date:"d/m/Y" }}.</p>
+  {% else %}
+    <p>Criada manualmente por {{ record.created_by|default:"Voce" }} em {{ record.created_at|date:"d/m/Y" }}.</p>
+  {% endif %}
+</div>

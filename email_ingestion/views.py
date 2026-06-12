@@ -22,12 +22,19 @@ from django.views.generic import (
     UpdateView,
 )
 
-from applications.models import JobApplication
+from applications.models import Company, CompanyAuditLog, Job, JobApplication
+from applications.utils import find_duplicate_company, find_duplicate_job
 
 from .adapters import get_adapter
 from .diagnostics import run_diagnostics
 from .forms import EmailAccountForm, EmailSenderRuleForm
-from .models import EmailAccount, EmailSenderRule, InboundEmail
+from .models import (
+    EmailAccount,
+    EmailClassification,
+    EmailDetectedOpportunity,
+    EmailSenderRule,
+    InboundEmail,
+)
 
 
 # --------------------------------------------------------------------------- #
@@ -263,17 +270,19 @@ def _user_applications(user):
     return JobApplication.objects.filter(user=user).select_related('job', 'job__company')
 
 
-def _render_review_row(request, email):
-    """Renderiza a linha de revisao de um e-mail (parcial HTMX)."""
-    return render(
-        request,
-        'email_ingestion/_review_row.html',
-        {
-            'email': email,
-            'applications': _user_applications(request.user),
-            'status_choices': JobApplication.Status.choices,
-        },
-    )
+def _render_review_row(request, email, **extra):
+    """Renderiza a linha de revisao de um e-mail (parcial HTMX).
+
+    ``extra`` permite injetar o estado de aviso de duplicacao (Fatia 4).
+    """
+    context = {
+        'email': email,
+        'applications': _user_applications(request.user),
+        'status_choices': JobApplication.Status.choices,
+        'intent_choices': EmailClassification.Intent.choices,
+    }
+    context.update(extra)
+    return render(request, 'email_ingestion/_review_row.html', context)
 
 
 class ClassificationReviewListView(LoginRequiredMixin, ListView):
@@ -283,17 +292,55 @@ class ClassificationReviewListView(LoginRequiredMixin, ListView):
     template_name = 'email_ingestion/review_list.html'
 
     def get_queryset(self):
+        # Ordena por confianca (maior primeiro): a faixa apenas prioriza a
+        # revisao, nada e escondido (Etapa 4, Fatia 1).
         return (
             InboundEmail.objects.filter(email_account__user=self.request.user)
             .exclude(processing_status=InboundEmail.ProcessingStatus.PENDING)
             .select_related('classification', 'application__job__company')
+            .order_by('-classification__confidence', '-received_at')
         )
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context['applications'] = _user_applications(self.request.user)
         context['status_choices'] = JobApplication.Status.choices
+        context['intent_choices'] = EmailClassification.Intent.choices
         return context
+
+
+class InboundEmailDetailView(LoginRequiredMixin, DetailView):
+    """Tela interna de detalhe do e-mail (Fatia 4), restrita ao dono.
+
+    Mostra assunto/remetente/data, o corpo (ou aviso de expurgo) e a
+    classificacao do LLM. Funciona apos o purge e para qualquer provedor.
+    """
+
+    context_object_name = 'email'
+    template_name = 'email_ingestion/email_detail.html'
+
+    def get_queryset(self):
+        return InboundEmail.objects.filter(
+            email_account__user=self.request.user
+        ).select_related('classification')
+
+
+@login_required
+@require_POST
+def email_set_intent(request, pk):
+    """Passo 1 do assistente: grava a intencao confirmada pelo usuario (emenda 13).
+
+    Intencao vazia volta ao passo 1 ("corrigir intencao"). A linha re-renderizada
+    decide qual passo 2 mostrar a partir de ``reviewed_intent``.
+    """
+    email = _owned_email(request, pk)
+    classification = getattr(email, 'classification', None)
+    if classification is not None:
+        intent = request.POST.get('intent', '')
+        if intent == '' or intent in EmailClassification.Intent.values:
+            classification.reviewed_intent = intent
+            classification.save(update_fields=['reviewed_intent'])
+    return _render_review_row(request, email)
 
 
 @login_required
@@ -310,21 +357,267 @@ def email_confirm_apply(request, pk):
         )
         email.application = application
 
-    new_status = request.POST.get('status', '')
-    if application is not None:
-        summary = getattr(getattr(email, 'classification', None), 'summary', '')
-        application.register_email_update(
-            email=email, new_status=new_status, summary=summary
+    if application is None:
+        # Erro inline (HTTP 200): o HTMX nao faz swap em respostas de erro e o
+        # ``messages`` global fica fora do cartao trocado — re-renderiza com a
+        # faixa de erro dentro da linha (emenda 13).
+        return _render_review_row(
+            request, email, error='Selecione uma candidatura antes de confirmar.'
         )
-        if hasattr(email, 'classification'):
-            email.classification.reviewed_by = request.user
-            email.classification.reviewed_at = timezone.now()
-            email.classification.save(update_fields=['reviewed_by', 'reviewed_at'])
-        email.processing_status = InboundEmail.ProcessingStatus.CLASSIFIED
-        email.save(update_fields=['application', 'processing_status'])
-    else:
-        messages.error(request, 'Selecione uma candidatura antes de confirmar.')
 
+    new_status = request.POST.get('status', '')
+    summary = getattr(getattr(email, 'classification', None), 'summary', '')
+    application.register_email_update(
+        email=email, new_status=new_status, summary=summary
+    )
+    _mark_reviewed(email, request.user)
+    email.processing_status = InboundEmail.ProcessingStatus.CLASSIFIED
+    email.save(update_fields=['application', 'processing_status'])
+    return _render_review_row(request, email)
+
+
+def _mark_reviewed(email, user):
+    """Carimba a classificacao como revisada manualmente pelo usuario."""
+    if hasattr(email, 'classification'):
+        classification = email.classification
+        classification.reviewed_by = user
+        classification.reviewed_at = timezone.now()
+        classification.save(update_fields=['reviewed_by', 'reviewed_at'])
+
+
+def _materialize_company_job(request, email, *, create_url, extra_fields=None):
+    """Resolve Empresa+Vaga a partir dos campos da revisao, com aviso de duplicacao.
+
+    Retorna ``(job, None)`` quando materializou, ou ``(None, response)`` quando
+    precisa mostrar o aviso de duplicacao (linha ja re-renderizada). ``create_url``
+    e o endpoint para onde o aviso re-posta; ``extra_fields`` sao campos ocultos
+    extras (ex.: status sugerido) preservados no re-post. Reusa Empresa por reuso
+    explicito ou nome exatamente igual; grava ``source_email`` nos criados (Fatia 4).
+    """
+    company_name = request.POST.get('company_name', '').strip() or 'Empresa nao identificada'
+    role_title = request.POST.get('role_title', '').strip() or 'Vaga sem titulo'
+    source_url = request.POST.get('source_url', '').strip()
+    force = bool(request.POST.get('force'))
+    reuse_company_id = request.POST.get('reuse_company_id')
+    reuse_job_id = request.POST.get('reuse_job_id')
+
+    # Reuso de vaga existente: vincula a ela, sem criar registros.
+    if reuse_job_id:
+        return get_object_or_404(Job, pk=reuse_job_id), None
+
+    if reuse_company_id:
+        company = get_object_or_404(Company, pk=reuse_company_id)
+    else:
+        company = Company.objects.filter(name=company_name).first()
+
+    dup_ctx = {
+        'create_url': create_url,
+        'pending_company_name': company_name,
+        'pending_role_title': role_title,
+        'pending_source_url': source_url,
+        'pending_extra': extra_fields or {},
+    }
+
+    # Aviso de duplicacao de empresa (normalizado, nao bloqueante) — Fatia 4.
+    if company is None and not force:
+        dup = find_duplicate_company(company_name)
+        if dup is not None:
+            return None, _render_review_row(
+                request, email, dup_kind='company', dup_record=dup, **dup_ctx
+            )
+
+    if company is None:
+        company = Company.objects.create(
+            name=company_name, created_by=request.user, source_email=email
+        )
+        CompanyAuditLog.record_create(company, request.user)
+
+    # Aviso de duplicacao de vaga na empresa resolvida (nao bloqueante).
+    if not force:
+        dup_job = find_duplicate_job(company, role_title)
+        if dup_job is not None:
+            return None, _render_review_row(
+                request, email, dup_kind='job', dup_record=dup_job, **dup_ctx
+            )
+
+    job = Job.objects.create(
+        company=company,
+        role_title=role_title,
+        source_url=source_url,
+        directed_to=request.user,
+        created_by=request.user,
+        source_email=email,
+    )
+    return job, None
+
+
+def _mark_opportunity_created(email, job, application):
+    """Marca a oportunidade detectada como criada (emenda 13, intencao unica)."""
+    classification = getattr(email, 'classification', None)
+    if classification is None:
+        return
+    opp = (
+        classification.opportunities.filter(
+            state=EmailDetectedOpportunity.State.PENDING
+        ).first()
+        or classification.opportunities.first()
+    )
+    if opp is not None:
+        opp.state = EmailDetectedOpportunity.State.CREATED
+        opp.job = job
+        opp.application = application
+        opp.save(update_fields=['state', 'job', 'application'])
+
+
+def _conclude_email(email, user):
+    """Conclui o e-mail quando todas as linhas filhas estao em estado terminal.
+
+    Conclusao *derivada* (emenda 13, Fatia 2): enquanto sobrar oportunidade
+    ``pending`` o e-mail continua na fila. Sem pendentes, carimba a revisao e
+    define o status — ``CLASSIFIED`` se ao menos uma vaga foi criada, senao
+    ``IGNORED`` (lista toda descartada ou e-mail irrelevante).
+    """
+    classification = getattr(email, 'classification', None)
+    if classification is None:
+        return
+    opportunities = classification.opportunities
+    if opportunities.filter(state=EmailDetectedOpportunity.State.PENDING).exists():
+        return
+    created = opportunities.filter(
+        state=EmailDetectedOpportunity.State.CREATED
+    ).exists()
+    email.processing_status = (
+        InboundEmail.ProcessingStatus.CLASSIFIED
+        if created
+        else InboundEmail.ProcessingStatus.IGNORED
+    )
+    email.save(update_fields=['processing_status'])
+    _mark_reviewed(email, user)
+
+
+@login_required
+@require_POST
+def email_create_list_item(request, pk):
+    """Materializa apenas a Vaga de um item da lista (emenda 13, Fatia 2).
+
+    Numa lista/newsletter o usuario normalmente ainda nao se candidatou: cada
+    item cria so a ``Job`` global (sem candidatura), com aviso de duplicacao por
+    item. A linha vira ``created`` ligada a Vaga; o e-mail so sai da fila quando
+    todas as linhas estao em estado terminal (``_conclude_email``).
+    """
+    email = _owned_email(request, pk)
+    opp = get_object_or_404(
+        EmailDetectedOpportunity,
+        pk=request.POST.get('opp_id'),
+        classification__email=email,
+    )
+    job, dup_response = _materialize_company_job(
+        request, email,
+        create_url=reverse('email_ingestion:email_create_list_item', args=[email.pk]),
+        extra_fields={'opp_id': opp.pk},
+    )
+    if dup_response is not None:
+        return dup_response
+
+    opp.state = EmailDetectedOpportunity.State.CREATED
+    opp.job = job
+    opp.save(update_fields=['state', 'job'])
+    _conclude_email(email, request.user)
+    return _render_review_row(request, email)
+
+
+@login_required
+@require_POST
+def email_create_job(request, pk):
+    """Materializa Empresa/Vaga/Candidatura de uma 'possivel vaga nova'.
+
+    So aqui — apos a confirmacao do usuario — os recursos globais sao criados a
+    partir dos campos editaveis (Empresa reusada se ja existir). Vincula o e-mail
+    a candidatura rascunho e marca a classificacao como revisada.
+    """
+    email = _owned_email(request, pk)
+    job, dup_response = _materialize_company_job(
+        request, email,
+        create_url=reverse('email_ingestion:email_create_job', args=[email.pk]),
+    )
+    if dup_response is not None:
+        return dup_response
+
+    application = JobApplication.objects.create(
+        user=request.user,
+        job=job,
+        status=JobApplication.Status.DRAFT,
+        origin=JobApplication.Origin.EMAIL,
+        source_email=email,
+    )
+    email.application = application
+    email.processing_status = InboundEmail.ProcessingStatus.CLASSIFIED
+    email.save(update_fields=['application', 'processing_status'])
+    _mark_reviewed(email, request.user)
+    _mark_opportunity_created(email, job, application)
+    return _render_review_row(request, email)
+
+
+@login_required
+@require_POST
+def email_create_application(request, pk):
+    """Criacao retroativa (emenda 13): materializa Empresa/Vaga/Candidatura e
+    aplica o status sugerido para um e-mail de atualizacao cuja candidatura nunca
+    foi registrada (ex.: o usuario se candidatou pelo site da empresa). Origem
+    ``EXTERNAL`` — e historia real, so nao estava no sistema. Resolve o beco UDS.
+    """
+    email = _owned_email(request, pk)
+    new_status = request.POST.get('status', '')
+    job, dup_response = _materialize_company_job(
+        request, email,
+        create_url=reverse('email_ingestion:email_create_application', args=[email.pk]),
+        extra_fields={'status': new_status},
+    )
+    if dup_response is not None:
+        return dup_response
+
+    application = JobApplication.objects.create(
+        user=request.user,
+        job=job,
+        status=JobApplication.Status.DRAFT,
+        origin=JobApplication.Origin.EXTERNAL,
+        source_email=email,
+    )
+    summary = getattr(getattr(email, 'classification', None), 'summary', '')
+    application.register_email_update(
+        email=email, new_status=new_status, summary=summary
+    )
+    email.application = application
+    email.processing_status = InboundEmail.ProcessingStatus.CLASSIFIED
+    email.save(update_fields=['application', 'processing_status'])
+    _mark_reviewed(email, request.user)
+    _mark_opportunity_created(email, job, application)
+    return _render_review_row(request, email)
+
+
+@login_required
+@require_POST
+def email_discard(request, pk):
+    """Descarta um rascunho auto-criado (legado) e limpa orfaos.
+
+    Remove a candidatura rascunho ligada ao e-mail; se a Vaga e a Empresa criadas
+    junto ficarem sem nenhuma outra candidatura, sao removidas tambem. Trata-se de
+    um palpite rejeitado — nao e historico real —, por isso a remocao e definitiva.
+    O e-mail e marcado como ignorado.
+    """
+    email = _owned_email(request, pk)
+    application = email.application
+    if application is not None:
+        job = application.job
+        company = job.company
+        application.delete()
+        if not job.applications.exists():
+            job.delete()
+            if not company.jobs.exists():
+                company.delete()
+    email.application = None
+    email.processing_status = InboundEmail.ProcessingStatus.IGNORED
+    email.save(update_fields=['application', 'processing_status'])
     return _render_review_row(request, email)
 
 
@@ -345,8 +638,21 @@ def email_link_application(request, pk):
 @login_required
 @require_POST
 def email_ignore(request, pk):
-    """Marca o e-mail como irrelevante (ignorado pelo usuario)."""
+    """Descarta as oportunidades pendentes e conclui o e-mail (emenda 13).
+
+    Usado tanto por 'Ignorar tudo' (lista) quanto por 'Confirmar' (irrelevante):
+    descarta os itens pendentes e deixa ``_conclude_email`` derivar o status —
+    ``IGNORED`` quando nada foi criado, ``CLASSIFIED`` quando ja havia vagas
+    criadas na lista. Sem classificacao (sem itens), conclui como ignorado.
+    """
     email = _owned_email(request, pk)
-    email.processing_status = InboundEmail.ProcessingStatus.IGNORED
-    email.save(update_fields=['processing_status'])
+    classification = getattr(email, 'classification', None)
+    if classification is None:
+        email.processing_status = InboundEmail.ProcessingStatus.IGNORED
+        email.save(update_fields=['processing_status'])
+        return _render_review_row(request, email)
+    classification.opportunities.filter(
+        state=EmailDetectedOpportunity.State.PENDING
+    ).update(state=EmailDetectedOpportunity.State.DISMISSED)
+    _conclude_email(email, request.user)
     return _render_review_row(request, email)

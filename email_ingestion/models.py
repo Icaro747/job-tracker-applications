@@ -192,6 +192,14 @@ class InboundEmail(models.Model):
 class EmailClassification(models.Model):
     """Resultado da analise do LLM para um e-mail (preenchido na Etapa 4)."""
 
+    class Intent(models.TextChoices):
+        """As quatro intencoes de um e-mail em revisao (emenda 13)."""
+
+        UPDATE = 'atualizacao', 'Atualizacao de candidatura'
+        NEW_SINGLE = 'nova_unica', 'Nova oportunidade unica'
+        LIST = 'lista', 'Lista de oportunidades'
+        IRRELEVANT = 'irrelevante', 'Irrelevante / informativo'
+
     email = models.OneToOneField(
         InboundEmail, on_delete=models.CASCADE, related_name='classification'
     )
@@ -199,6 +207,16 @@ class EmailClassification(models.Model):
     summary = models.TextField(blank=True)
     suggested_status = models.CharField(max_length=30, blank=True)
     rationale = models.TextField(blank=True)
+    # Intencao sugerida pelo LLM (emenda 13, Fatia 2) — pre-seleciona o passo 1.
+    # Distinta de ``reviewed_intent``: registra sugerido-vs-confirmado.
+    suggested_intent = models.CharField(
+        max_length=20, choices=Intent.choices, blank=True
+    )
+    # Intencao confirmada pelo usuario no assistente de revisao (emenda 13).
+    # Em branco ate a revisao, preservando o passo 1 para e-mails novos.
+    reviewed_intent = models.CharField(
+        max_length=20, choices=Intent.choices, blank=True
+    )
     reviewed_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
@@ -215,3 +233,69 @@ class EmailClassification(models.Model):
 
     def __str__(self):
         return f'Classificacao: {self.email.subject}'
+
+    @property
+    def pending_opportunities(self):
+        """Oportunidades ainda nao processadas (passo 2 da lista, emenda 13)."""
+        return self.opportunities.filter(state=EmailDetectedOpportunity.State.PENDING)
+
+    @property
+    def band(self):
+        """Faixa de confianca (apoio visual): ``alta`` / ``media`` / ``baixa``.
+
+        Derivada dos limiares configurados — referencia visual para priorizar a
+        revisao, nunca gatilho de acao (Etapa 4, Fatia 1).
+        """
+        conf = float(self.confidence)
+        if conf >= settings.LLM_CONFIDENCE_THRESHOLD:
+            return 'alta'
+        if conf >= settings.LLM_CONFIDENCE_BAND_MEDIUM:
+            return 'media'
+        return 'baixa'
+
+class EmailDetectedOpportunity(models.Model):
+    """Uma vaga extraida de um e-mail pelo LLM (emenda 13).
+
+    Um e-mail de lista com N vagas gera N linhas; uma oportunidade unica gera 1.
+    O estado por linha permite processar a lista aos poucos, com rastreabilidade
+    de qual ``Job``/candidatura nasceu de cada item. Nada e materializado sem
+    confirmacao do usuario na revisao.
+    """
+
+    class State(models.TextChoices):
+        PENDING = 'pending', 'Pendente'
+        CREATED = 'created', 'Criada'
+        DISMISSED = 'dismissed', 'Descartada'
+
+    classification = models.ForeignKey(
+        EmailClassification, on_delete=models.CASCADE, related_name='opportunities'
+    )
+    company_name = models.CharField(max_length=180, blank=True)
+    role_title = models.CharField(max_length=220, blank=True)
+    source_url = models.URLField(blank=True)
+    state = models.CharField(
+        max_length=20, choices=State.choices, default=State.PENDING
+    )
+    job = models.ForeignKey(
+        'applications.Job',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='+',
+    )
+    application = models.ForeignKey(
+        'applications.JobApplication',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='+',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['pk']
+        verbose_name = 'oportunidade detectada'
+        verbose_name_plural = 'oportunidades detectadas'
+
+    def __str__(self):
+        return f'{self.role_title or "vaga"} @ {self.company_name or "?"}'

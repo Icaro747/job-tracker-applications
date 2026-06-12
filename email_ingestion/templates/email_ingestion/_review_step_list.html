@@ -1,0 +1,35 @@
+{# Passo 2 — lista de oportunidades (emenda 13, Fatia 2): uma vaga por item. #}
+{# Cada item cria SO a Vaga global (sem candidatura); o usuario se candidata #}
+{# depois, so nas que interessam. O e-mail so sai da fila quando todas as #}
+{# linhas estao em estado terminal. Nada foi criado automaticamente. #}
+<p class="help"><strong>Lista de vagas.</strong> Crie as vagas que interessam — cada uma
+  cria apenas a vaga; voce se candidata depois. Nada foi criado automaticamente.</p>
+
+{% for opp in email.classification.pending_opportunities %}
+  <form class="stack opportunity-item"
+        hx-post="{% url 'email_ingestion:email_create_list_item' email.pk %}"
+        hx-target="#email-{{ email.pk }}" hx-swap="outerHTML">
+    <input type="hidden" name="opp_id" value="{{ opp.pk }}">
+    <label>Empresa
+      <input type="text" name="company_name" value="{{ opp.company_name }}">
+    </label>
+    <label>Cargo
+      <input type="text" name="role_title" value="{{ opp.role_title }}">
+    </label>
+    <label>Link da vaga
+      <input type="url" name="source_url" value="{{ opp.source_url }}">
+    </label>
+    <button type="submit">Criar vaga</button>
+  </form>
+{% empty %}
+  <p class="help">Nenhuma vaga pendente.</p>
+{% endfor %}
+
+<div class="actions">
+  <form class="inline-form"
+        hx-post="{% url 'email_ingestion:email_ignore' email.pk %}"
+        hx-target="#email-{{ email.pk }}" hx-swap="outerHTML">
+    <button type="submit" class="btn-secondary">Ignorar tudo</button>
+  </form>
+  {% include 'email_ingestion/_review_corrigir_intencao.html' %}
+</div>

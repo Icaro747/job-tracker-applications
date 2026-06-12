@@ -3,7 +3,7 @@ import pytest
 from django.urls import reverse
 
 from applications.models import ApplicationTimelineEntry, JobApplication
-from email_ingestion.models import InboundEmail
+from email_ingestion.models import EmailClassification, InboundEmail
 from tests.factories import (
     EmailAccountFactory,
     EmailClassificationFactory,
@@ -122,3 +122,53 @@ def test_confirm_rejects_other_users_application(auth_client, user):
     )
 
     assert response.status_code == 404
+
+
+# --------------------------------------------------------------------------- #
+# Selo de intencao na fila (emenda 13, Fatia 3).                              #
+# --------------------------------------------------------------------------- #
+def _review_email_with_intent(user, **classification_kwargs):
+    account = EmailAccountFactory(user=user)
+    email = InboundEmailFactory(
+        email_account=account,
+        processing_status=InboundEmail.ProcessingStatus.NEEDS_REVIEW,
+    )
+    EmailClassificationFactory(email=email, **classification_kwargs)
+    return email
+
+
+def test_queue_shows_suggested_intent_badge(auth_client, user):
+    # Intencao sugerida pelo LLM, ainda nao confirmada: selo marcado como palpite.
+    _review_email_with_intent(
+        user,
+        suggested_intent=EmailClassification.Intent.LIST,
+        reviewed_intent='',
+    )
+    response = auth_client.get(reverse('email_ingestion:review_list'))
+    content = response.content.decode()
+    # O passo 1 renderiza os rotulos como radios; o selo se distingue pelo
+    # marcador "Sugerido" e pela classe ``badge-intent``.
+    assert 'badge-intent' in content
+    assert 'Sugerido' in content
+
+
+def test_queue_shows_confirmed_intent_badge(auth_client, user):
+    # Intencao confirmada pelo usuario: selo sem marca de "sugerido".
+    _review_email_with_intent(
+        user,
+        suggested_intent=EmailClassification.Intent.LIST,
+        reviewed_intent=EmailClassification.Intent.UPDATE,
+    )
+    response = auth_client.get(reverse('email_ingestion:review_list'))
+    content = response.content.decode()
+    assert 'Atualizacao de candidatura' in content
+    # O badge confirmado nao usa o prefixo "Sugerido:".
+    assert 'Sugerido: Atualizacao' not in content
+
+
+def test_queue_without_intent_has_no_badge(auth_client, user):
+    # E-mail legado sem intencao: nenhum selo de intencao, sem quebrar a fila.
+    _review_email_with_intent(user, suggested_intent='', reviewed_intent='')
+    response = auth_client.get(reverse('email_ingestion:review_list'))
+    assert response.status_code == 200
+    assert 'badge-intent' not in response.content.decode()

@@ -1,0 +1,29 @@
+{# Passo 2 — nova oportunidade unica (lista tratada como tamanho 1 nesta fatia). #}
+{# Os campos vem da oportunidade detectada; nada foi criado automaticamente. #}
+{% with opp=email.classification.opportunities.first %}
+<p class="help"><strong>Possivel vaga nova.</strong> Revise os campos e confirme para
+  criar a vaga e a candidatura — nada foi criado automaticamente.</p>
+<form class="stack"
+      hx-post="{% url 'email_ingestion:email_create_job' email.pk %}"
+      hx-target="#email-{{ email.pk }}" hx-swap="outerHTML">
+  <label>Empresa
+    <input type="text" name="company_name" value="{{ opp.company_name }}">
+  </label>
+  <label>Cargo
+    <input type="text" name="role_title" value="{{ opp.role_title }}">
+  </label>
+  <label>Link da vaga
+    <input type="url" name="source_url" value="{{ opp.source_url }}">
+  </label>
+  <button type="submit">Criar vaga e candidatura</button>
+</form>
+
+<div class="actions">
+  {% include 'email_ingestion/_review_corrigir_intencao.html' %}
+  <form class="inline-form"
+        hx-post="{% url 'email_ingestion:email_ignore' email.pk %}"
+        hx-target="#email-{{ email.pk }}" hx-swap="outerHTML">
+    <button type="submit" class="btn-secondary">Ignorar</button>
+  </form>
+</div>
+{% endwith %}

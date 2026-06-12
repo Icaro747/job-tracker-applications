@@ -14,6 +14,7 @@ import requests
 from django.conf import settings
 
 from applications.models import JobApplication
+from email_ingestion.models import EmailClassification
 
 from .base import (
     ClassificationResult,
@@ -24,6 +25,8 @@ from .base import (
 
 # Codigos de status que o modelo pode sugerir (os mesmos da candidatura).
 _VALID_STATUSES = [choice.value for choice in JobApplication.Status]
+# Intencoes validas (emenda 13) — qualquer outro valor do modelo vira vazio.
+_VALID_INTENTS = frozenset(EmailClassification.Intent.values)
 
 _SYSTEM_PROMPT = (
     'Voce e um assistente que classifica e-mails de processos seletivos de '
@@ -33,10 +36,14 @@ _SYSTEM_PROMPT = (
     '(uma das opcoes: {statuses}, ou string vazia se nao se aplicar), '
     '"confidence" (numero de 0 a 100), "rationale" (justificativa curta), '
     '"application_id" (o id da candidatura aberta mais provavel destinataria, '
-    'ou null se nenhuma), "is_new_opportunity" (true apenas se o e-mail oferece '
-    'uma vaga NOVA, e nao atualizacao de um processo existente) e "opportunity" '
-    '(quando is_new_opportunity for true, um objeto com "company_name", '
-    '"role_title" e "source_url"; caso contrario null).'
+    'ou null se nenhuma), "intent" (a intencao do e-mail, uma das opcoes: '
+    '"atualizacao" = resposta de um processo existente; "nova_unica" = um '
+    'recrutador direciona UMA vaga ao usuario; "lista" = newsletter/lista com '
+    'VARIAS vagas, de uma ou varias empresas; "irrelevante" = nao representa '
+    'processo nem vaga) e "opportunities" (lista de vagas extraidas do e-mail; '
+    'cada item e um objeto com "company_name", "role_title" e "source_url"; '
+    'use lista vazia para "atualizacao" e "irrelevante", um item para '
+    '"nova_unica" e um item por vaga para "lista").'
 )
 
 
@@ -93,14 +100,19 @@ class OllamaClassifier(LLMClassifierAdapter):
         return self._to_result(data)
 
     def _to_result(self, data: dict) -> ClassificationResult:
-        opportunity = None
-        raw_opp = data.get('opportunity')
-        if data.get('is_new_opportunity') and isinstance(raw_opp, dict):
-            opportunity = DetectedOpportunity(
-                company_name=raw_opp.get('company_name', '') or '',
-                role_title=raw_opp.get('role_title', '') or '',
-                source_url=raw_opp.get('source_url', '') or '',
+        opportunities = [
+            DetectedOpportunity(
+                company_name=raw.get('company_name', '') or '',
+                role_title=raw.get('role_title', '') or '',
+                source_url=raw.get('source_url', '') or '',
             )
+            for raw in (data.get('opportunities') or [])
+            if isinstance(raw, dict)
+        ]
+
+        intent = data.get('intent', '') or ''
+        if intent not in _VALID_INTENTS:
+            intent = ''
 
         try:
             confidence = float(data.get('confidence', 0) or 0)
@@ -113,6 +125,6 @@ class OllamaClassifier(LLMClassifierAdapter):
             confidence=confidence,
             rationale=data.get('rationale', '') or '',
             application_id=data.get('application_id'),
-            is_new_opportunity=bool(data.get('is_new_opportunity')),
-            opportunity=opportunity,
+            intent=intent,
+            opportunities=opportunities,
         )

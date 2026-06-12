@@ -27,6 +27,7 @@ from .models import (
     Job,
     JobApplication,
 )
+from .utils import find_duplicate_company, find_duplicate_job
 
 
 @login_required
@@ -62,6 +63,7 @@ class CompanyDetailView(LoginRequiredMixin, DetailView):
         context = super().get_context_data(**kwargs)
         context['audit_logs'] = self.object.audit_logs.select_related('user')
         context['jobs'] = self.object.jobs.all()
+        context['viewer'] = self.request.user
         return context
 
 
@@ -70,6 +72,14 @@ class CompanyCreateView(LoginRequiredMixin, CreateView):
     form_class = CompanyForm
 
     def form_valid(self, form):
+        # Aviso de duplicacao nao bloqueante (Fatia 4): variantes normalizadas
+        # ("Globex" vs "Globex Inc."). O nome exato ja e barrado por unique.
+        if not self.request.POST.get('confirm_duplicate'):
+            duplicate = find_duplicate_company(form.cleaned_data['name'])
+            if duplicate is not None:
+                return self.render_to_response(
+                    self.get_context_data(form=form, duplicate=duplicate)
+                )
         form.instance.created_by = self.request.user
         response = super().form_valid(form)
         CompanyAuditLog.record_create(self.object, self.request.user)
@@ -124,12 +134,33 @@ class JobListView(LoginRequiredMixin, ListView):
 class JobDetailView(LoginRequiredMixin, DetailView):
     model = Job
 
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        # Indicador por usuario: candidatura mais recente desta vaga (se houver).
+        context['user_application'] = (
+            JobApplication.objects.filter(user=self.request.user, job=self.object)
+            .order_by('-created_at', '-pk')
+            .first()
+        )
+        context['viewer'] = self.request.user
+        return context
+
 
 class JobCreateView(LoginRequiredMixin, CreateView):
     model = Job
     form_class = JobForm
 
     def form_valid(self, form):
+        # Aviso de duplicacao nao bloqueante (Fatia 4): mesma empresa + titulo
+        # normalizado igual a uma vaga existente.
+        if not self.request.POST.get('confirm_duplicate'):
+            duplicate = find_duplicate_job(
+                form.cleaned_data['company'], form.cleaned_data['role_title']
+            )
+            if duplicate is not None:
+                return self.render_to_response(
+                    self.get_context_data(form=form, duplicate=duplicate)
+                )
         form.instance.created_by = self.request.user
         return super().form_valid(form)
 
@@ -183,11 +214,20 @@ class ApplicationDetailView(OwnedApplicationMixin, DetailView):
         return super().get_queryset().select_related('job__company')
 
     def get_context_data(self, **kwargs):
+        # Import local: email_ingestion.models depende de applications.models,
+        # entao evitamos o acoplamento no topo do modulo.
+        from email_ingestion.models import InboundEmail
+
         context = super().get_context_data(**kwargs)
         context['timeline'] = self.object.timeline.all()
         context['status_form'] = StatusForm(initial={'status': self.object.status})
         context['next_action_form'] = NextActionForm(instance=self.object)
         context['note_form'] = TimelineNoteForm()
+        context['pending_reviews_count'] = self.object.emails.filter(
+            processing_status=InboundEmail.ProcessingStatus.NEEDS_REVIEW
+        ).count()
+        context['linked_emails'] = self.object.emails.all()
+        context['viewer'] = self.request.user
         return context
 
 

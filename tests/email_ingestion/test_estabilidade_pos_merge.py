@@ -46,11 +46,13 @@ def _injeta_classificador(monkeypatch, classifier):
     )
 
 
-def test_estabilidade_fluxo_alta_confianca_aplica_automatico(user, monkeypatch):
-    """Scan dispara classificacao de alta confianca que aplica o status sozinha.
+def test_estabilidade_fluxo_alta_confianca_apenas_sugere(user, monkeypatch):
+    """Scan dispara classificacao de alta confianca, mas nada e aplicado sozinho.
 
-    Atravessa A (conta criptografada) + B (Fila 1 -> Fila 2 -> auto-aplicacao) e
-    confirma que a conta criptografada sobrevive ao pipeline inteiro.
+    Atravessa A (conta criptografada) + B (Fila 1 -> Fila 2): mesmo com 95% de
+    confianca, o e-mail vai para ``needs_review`` com candidatura/status apenas
+    pre-selecionados (Etapa 4, Fatia 1). A conta criptografada sobrevive ao
+    pipeline inteiro.
     """
     account = _conta_com_credenciais(user)
     app = JobApplicationFactory(user=user, status=JobApplication.Status.APPLIED)
@@ -81,14 +83,15 @@ def test_estabilidade_fluxo_alta_confianca_aplica_automatico(user, monkeypatch):
     assert len(created) == 1
     email = created[0]
 
-    # Fila 2 (disparada pelo scan): alta confianca -> aplicou automaticamente.
+    # Fila 2 (disparada pelo scan): alta confianca -> sugestao, nao aplicacao.
     email.refresh_from_db()
-    assert email.processing_status == InboundEmail.ProcessingStatus.CLASSIFIED
-    assert email.application_id == app.pk
+    assert email.processing_status == InboundEmail.ProcessingStatus.NEEDS_REVIEW
+    assert email.application_id == app.pk  # pre-selecionada
+    assert email.inferred_application_status == JobApplication.Status.INTERVIEW
 
     app.refresh_from_db()
-    assert app.status == JobApplication.Status.INTERVIEW
-    assert app.timeline.filter(
+    assert app.status == JobApplication.Status.APPLIED  # nada aplicado
+    assert not app.timeline.filter(
         entry_type=ApplicationTimelineEntry.EntryType.EMAIL_UPDATE
     ).exists()
 
@@ -99,10 +102,10 @@ def test_estabilidade_fluxo_alta_confianca_aplica_automatico(user, monkeypatch):
 
 
 def test_estabilidade_fluxo_revisao_manual(auth_client, user, monkeypatch):
-    """Baixa confianca cai para revisao manual e e confirmada pela tela.
+    """E-mail cai na fila de revisao e e confirmado pela tela.
 
-    Cobre o segundo ramo de ``_apply_or_review`` ponta a ponta, ja passando pela
-    view de revisao (HTMX) trazida na Etapa 4.
+    Cobre o caminho de revisao manual ponta a ponta (scan -> needs_review ->
+    confirmacao via HTMX), aplicando o status so na confirmacao do usuario.
     """
     account = _conta_com_credenciais(user)
     app = JobApplicationFactory(user=user, status=JobApplication.Status.APPLIED)

@@ -13,8 +13,9 @@
     <p><strong>Site:</strong> {{ company.website|default:"-" }}</p>
     <p><strong>Pagina de carreiras:</strong> {{ company.careers_page|default:"-" }}</p>
     <p><strong>Observacoes:</strong> {{ company.notes|default:"-"|linebreaksbr }}</p>
-    <p class="help">Criada por {{ company.created_by|default:"—" }} em {{ company.created_at }}</p>
   </div>
+
+  {% include "applications/_origem.html" with record=company %}
 
   <div class="panel">
     <h3>Vagas desta empresa</h3>

@@ -26,6 +26,101 @@ Todo desenvolvimento neste projeto segue este ciclo, sem exceção:
 
 ---
 
+## Conjunto canônico de testes por comportamento
+
+> **Qualidade não é quantidade.** O valor de uma suíte não está em *quantos* testes
+> existem, mas em *o que cada teste prova*. Uma montanha de testes redundantes dá
+> falsa confiança e custa manutenção. Cada teste deve corresponder a uma
+> **proposição distinta** sobre o comportamento — se dois testes provam a mesma
+> coisa, um deles sobra.
+
+Para cada comportamento que **recebe entrada e produz efeito** (um endpoint, um
+método de domínio que valida, um formulário), o ponto de partida é um conjunto
+canônico que cobre sucesso **e** falha. Não é um teto nem uma cota: é o mínimo que
+responde *"a aplicação reage certo, e quando recusa, diz claramente por quê?"*.
+
+### Os caminhos de sucesso (2)
+
+1. **Entrada completa → sucesso.** Todos os campos (obrigatórios **e** opcionais)
+   enviados corretamente. Assere o efeito esperado: registro criado/alterado,
+   status correto, resposta de sucesso.
+2. **Mínimo viável → sucesso.** Só os campos **obrigatórios**, omitindo os
+   opcionais. Prova que o opcional é de fato opcional e que o caminho feliz não
+   depende dele. (Quando o comportamento não tem campos opcionais, este caso se
+   funde ao anterior — são 1, não 2.)
+
+### Os caminhos de falha (3) — o coração da política
+
+O objetivo dos testes de falha **não** é só ver que "deu erro". É verificar que a
+aplicação **recusa de forma específica e legível**, identificando *o quê* e *por
+quê* — e que **o efeito não aconteceu**. Cada teste de falha assere as duas coisas:
+
+- **(a) Nada mudou.** A operação não teve efeito colateral (nada criado, status
+  inalterado) — `Model.objects.count()` igual, `refresh_from_db()` sem mudança.
+- **(b) A recusa é explícita e específica.** Status/código correto **e** uma
+  mensagem que aponta o campo ou a regra violada. **Não** basta `assert
+  response.status_code != 200`; é preciso assertar o *conteúdo* do erro.
+
+Os três cenários de exemplo:
+
+3. **Dados duplicados.** Tentar criar algo que viola unicidade (empresa de nome já
+   existente, `message_id` repetido). A resposta deve dizer que é duplicado, não
+   estourar 500 nem aceitar em silêncio.
+4. **Dados incompatíveis / que quebram regra.** Valor fora do domínio (status
+   inválido, transição proibida, tipo errado, e-mail malformado). A resposta deve
+   nomear a regra violada.
+5. **Campo obrigatório faltando.** Omitir um campo exigido. A resposta deve apontar
+   *qual* campo falta.
+
+### A regra do erro silencioso
+
+> **Erro silencioso é bug.** Uma requisição problemática que retorna `200` e não faz
+> nada, um `save()` que falha sem sinal, um endpoint HTMX que devolve o mesmo card
+> sem explicar a recusa — todos são falhas de produto, não "comportamentos
+> aceitáveis". Sempre que existir um caminho de recusa, **deve existir um teste que
+> prova que a recusa é visível e específica**.
+
+Esta política tem dente direto no projeto: a spec
+[13-revisao-orientada-a-intencao.md](../.specs/13-revisao-orientada-a-intencao.md)
+nasceu de um "clique sem efeito" (HTTP 200 que não fazia nada e não dava feedback).
+O teste de falha correspondente não para em "o status não mudou": ele assere que o
+card re-renderizado **contém a faixa de erro** explicando por que a confirmação foi
+recusada.
+
+### Exemplo aplicado — `email_confirm_apply` sem candidatura
+
+```python
+class TestEmailConfirmApply:
+    # sucesso completo
+    def test_confirma_com_candidatura_e_status_aplica_e_vincula(self, auth_client, user):
+        ...  # assere status aplicado + e-mail vinculado + reviewed_at preenchido
+
+    # falha: obrigatório faltando — recusa ESPECÍFICA, não silenciosa
+    def test_confirma_sem_candidatura_recusa_com_erro_visivel(self, auth_client, user):
+        email = InboundEmailFactory(email_account__user=user, application=None)
+        resp = auth_client.post(reverse("email_ingestion:email_confirm", args=[email.pk]))
+        # (a) nada mudou
+        email.refresh_from_db()
+        assert email.application_id is None
+        assert email.processing_status == "needs_review"
+        # (b) recusa explícita e específica — NÃO um 200 mudo
+        assert b"Selecione uma candidatura" in resp.content
+```
+
+### Quando o conjunto canônico flexiona
+
+- **Mais regras → mais testes de falha.** Se o comportamento tem 3 regras de
+  validação distintas, são 3 testes de "regra quebrada", um por regra. O número 3
+  acima é a *forma* (duplicado / incompatível / obrigatório), não um limite.
+- **Sem entrada de usuário → sem os 5.** Um `__str__`, uma property derivada ou um
+  manager não recebem entrada problemática: testam-se pelo seu propósito direto,
+  sem inventar cenários de falha artificiais.
+- **Fluxo de ponta a ponta** (`test_flows.py`) cobre a *sequência* (receber →
+  classificar → confirmar); os 5 canônicos cobrem cada *passo* isoladamente. Os dois
+  níveis se complementam, não se substituem.
+
+---
+
 ## Setup do Ambiente de Testes
 
 ### Dependências necessárias
@@ -206,7 +301,7 @@ def candidate_client(client, candidate_user):
 | Classificação de email pelo domínio do remetente | `@empresa.com` mapeia para candidatura correta |
 | `InboundEmail` muda status após classificação | `pending → classified` |
 | Emails sem regra vão para `needs_review` | Remetente desconhecido |
-| Confiança de `EmailClassification` | Alta confiança aplica automaticamente, baixa vai para revisão |
+| Confiança de `EmailClassification` | Apenas ordena/rotula a fila — nada é aplicado automaticamente (emenda 12); tudo vai para revisão |
 
 ### `candidate_profile`
 
@@ -333,6 +428,8 @@ uv run pytest --cov=applications --cov=email_ingestion --cov=candidate_profile -
 4. **Testes independentes.** Cada teste limpa seu próprio estado. Não há dependência entre testes.
 5. **Testes testam comportamento, não implementação.** Testa o que o sistema faz, não como ele faz.
 6. **CI não passa sem testes verdes.** A suite completa deve passar antes de qualquer merge.
+7. **Todo comportamento com entrada cobre sucesso e falha.** Aplica-se o conjunto canônico (ver seção acima): caminhos felizes (completo e mínimo) **e** falhas específicas. Cada teste prova uma proposição distinta — quantidade não substitui propósito.
+8. **Erro silencioso é bug.** Toda recusa precisa de um teste que prove que ela é visível e específica (status correto + motivo legível), nunca um `200` mudo ou uma falha sem sinal.
 
 ---
 

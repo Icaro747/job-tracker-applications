@@ -4,11 +4,22 @@
 {% block content %}
   <div class="card">
     <h2>{% if form.instance.pk %}Editar vaga{% else %}Nova vaga{% endif %}</h2>
+    {% if duplicate %}
+      <div class="panel banner-warning">
+        <p>Possivel duplicata: ja existe a vaga
+          "<a href="{{ duplicate.get_absolute_url }}">{{ duplicate.role_title }}</a>"
+          nesta empresa. Confirme para criar assim mesmo.</p>
+      </div>
+    {% endif %}
     <form method="post">
       {% csrf_token %}
       {{ form.as_p }}
       <div class="actions">
-        <button type="submit">Salvar</button>
+        {% if duplicate %}
+          <button type="submit" name="confirm_duplicate" value="1">Criar assim mesmo</button>
+        {% else %}
+          <button type="submit">Salvar</button>
+        {% endif %}
         <a href="{% url 'applications:job_list' %}">Cancelar</a>
       </div>
     </form>

@@ -22,6 +22,10 @@ apareceram:
    achatada; falta enxergar de relance os momentos-chave: quando comecou, quando
    o anuncio chegou, quando a candidatura foi enviada e quando houve retorno (ou
    se esta aguardando).
+4. **Nao da para rastrear a origem das informacoes.** Ao abrir uma
+   empresa/vaga/candidatura, nao se sabe de onde aquele dado veio — qual e-mail o
+   originou. Falta uma fonte de verdade que permita auditar a procedencia e
+   tambem perceber e evitar duplicacao de empresas/vagas.
 
 ## Principio que guia todas as mudancas
 
@@ -30,7 +34,7 @@ e sempre uma *sugestao*. "Status aplicado" e "vaga criada" passam a significar,
 por definicao, *"o usuario confirmou"*. A confianca deixa de ser gatilho de acao
 e vira apenas apoio visual para priorizar a revisao.
 
-A entrega e dividida em **tres fatias** independentes, cada uma testavel e
+A entrega e dividida em **quatro fatias** independentes, cada uma testavel e
 revisavel sozinha (TDD obrigatorio, conforme `docs/tdd.md`).
 
 ---
@@ -254,6 +258,125 @@ Designer — Globex
 
 ---
 
+## Fatia 4 — Rastreamento de origem (proveniencia) + aviso de duplicacao
+
+### 4.1 Objetivo
+
+Tornar possivel, a partir de qualquer empresa, vaga ou candidatura, **saber de
+onde aquele dado veio** — em especial qual e-mail o originou — criando uma fonte
+de verdade auditavel. Como subproduto, ajudar a perceber e evitar duplicacao de
+empresas/vagas.
+
+### 4.2 Modelo de proveniencia
+
+Cada registro passa a guardar um ponteiro opcional para o **e-mail que o criou**:
+campo `source_email` (FK para `InboundEmail`, `on_delete=SET_NULL`) em `Company`,
+`Job` e `JobApplication`. Ele e preenchido no exato momento em que o registro e
+materializado a partir de uma confirmacao de e-mail (os pontos de criacao
+introduzidos na Fatia 1). Criacao manual ou reuso de registro existente deixa o
+campo nulo.
+
+**Global continua global; a visibilidade do link e por dono.** O registro
+(empresa/vaga) permanece compartilhado. O link **"Ver origem"** so e exibido para
+quem e dono do e-mail de origem — ou seja, quando
+`source_email.email_account.user == usuario logado`. Para os demais usuarios o
+registro aparece normalmente, mas **sem** o link de origem (nao se expoe o e-mail
+privado de outra pessoa).
+
+**A prova de purge.** O expurgo de e-mails (`purge_email_bodies`) apaga apenas o
+`body_text`; a linha do `InboundEmail` (assunto, remetente, `received_at`,
+`message_id`) e o vinculo permanecem. Portanto o ponteiro `source_email` e o link
+de origem continuam validos mesmo apos o expurgo — nao e preciso guardar copia
+(snapshot) dos dados do e-mail.
+
+### 4.3 Bloco de origem nas telas
+
+Empresa, vaga e candidatura ganham um **bloco de origem sempre presente**, cujo
+conteudo varia conforme a procedencia:
+
+| Situacao | O que aparece |
+|---|---|
+| Criado a partir de um e-mail **seu** | "Criada a partir do e-mail '{assunto}', recebido em {data}" + link **Ver origem** |
+| Criado a partir do e-mail de **outro** usuario | "Criada por {created_by} em {created_at}" (sem link de origem) |
+| Criado **manualmente** | "Criada manualmente por {created_by / Voce} em {created_at}" |
+| Candidatura de **origem externa** | "Origem externa" |
+
+**Exemplo (vaga criada do seu e-mail).**
+
+```
+Designer — Globex
+  Origem: criada a partir do e-mail "Vaga de Designer na Globex",
+          recebido em 28/05/2026.  [ Ver origem ]
+```
+
+**Exemplo (empresa criada pelo e-mail de outro usuario, vista por voce).**
+
+```
+Globex
+  Origem: criada por maria@exemplo.com em 28/05/2026.
+  (sem link — o e-mail de origem nao e seu)
+```
+
+### 4.4 Origem da candidatura: criador + correspondencia
+
+Na candidatura, o bloco de origem destaca o **e-mail que a originou** e, abaixo,
+lista **todos os e-mails vinculados** a ela (assunto + data + link), formando o
+historico de correspondencia do processo. Todos os links respeitam o escopo do
+dono. Isso da a fonte de verdade completa, complementando a linha do tempo (que
+mostra os mesmos e-mails como eventos, mas no fluxo cronologico geral).
+
+**Exemplo.**
+
+```
+Origem e correspondencia — Backend na Acme
+  Originada por: "Vaga aberta na Acme" — 01/06/2026   [ Ver origem ]
+  E-mails vinculados:
+    · "Confirmacao de recebimento" — 02/06/2026        [ ver ]
+    · "Agendamento de entrevista"  — 05/06/2026        [ ver ]
+```
+
+### 4.5 Pagina interna do e-mail
+
+O link "Ver origem" (e cada e-mail vinculado) leva a uma **tela interna de
+detalhe do e-mail**, com escopo restrito ao dono. Ela mostra:
+
+- assunto, remetente, data de recebimento;
+- corpo do e-mail, ou aviso "corpo expurgado" quando ja removido pelo purge;
+- a classificacao do LLM associada (resumo, status sugerido, confianca, racional);
+- botao **abrir no provedor** (via `provider_link`), quando disponivel.
+
+E preferida a uma ida direta ao Gmail porque funciona apos o expurgo do corpo,
+para qualquer provedor e mesmo sem sessao ativa no provedor.
+
+### 4.6 Aviso de duplicacao (nao bloqueante)
+
+Para combater duplicacao na fonte, o sistema avisa sobre possiveis duplicatas em
+**dois fluxos de criacao**: ao confirmar uma "possivel vaga nova" (Fatia 1) e nos
+**formularios manuais** de criar empresa/vaga.
+
+**Regra de semelhanca — normalizada.** A comparacao ignora maiusculas, espacos
+nas pontas, pontuacao e sufixos societarios comuns (Inc, Ltda, S.A., ME, etc.):
+
+- **Empresa:** nome normalizado igual ao de uma empresa existente. (Como
+  `Company.name` ja e `unique`, isto cobre o caso que o banco nao pega: variantes
+  como "Globex" vs "Globex Inc.".)
+- **Vaga:** mesma empresa **e** titulo do cargo normalizado igual ao de uma vaga
+  existente daquela empresa.
+
+O aviso e **nao bloqueante**: alerta e oferece **reusar** o registro existente
+(no fluxo de e-mail, vincular a candidatura ao registro existente em vez de criar
+um novo), mas o usuario pode optar por criar assim mesmo.
+
+**Exemplo.** Ao confirmar uma vaga nova com empresa "Globex Inc." enquanto ja
+existe "Globex":
+
+```
+Possivel duplicata: ja existe a empresa "Globex".
+  [ Usar "Globex" existente ]   [ Criar "Globex Inc." mesmo assim ]
+```
+
+---
+
 ## Entradas
 
 - **Fila 2 (going-forward):** e-mail (remetente, assunto, corpo) + candidaturas
@@ -263,6 +386,10 @@ Designer — Globex
 - **Migracao:** identificacao automatica via `processing_status = classified` +
   `classification.reviewed_at` nulo. Sem entrada do usuario.
 - **Vaga:** novo campo opcional `published_at`.
+- **Proveniencia:** novo campo opcional `source_email` (FK para `InboundEmail`)
+  em empresa, vaga e candidatura, gravado na confirmacao de e-mail.
+- **Duplicacao:** nome de empresa / titulo de vaga informados na confirmacao ou
+  nos formularios manuais, comparados de forma normalizada com o que ja existe.
 
 ## Saidas
 
@@ -274,6 +401,10 @@ Designer — Globex
 - Tela de candidatura com painel de marcos e aviso de pendencia.
 - Tela de vaga com datas de anuncio/cadastro e indicador de candidatura do
   usuario.
+- Bloco de origem em empresa/vaga/candidatura (link "Ver origem" so para o dono)
+  e tela interna de detalhe do e-mail.
+- Aviso nao bloqueante de possivel duplicata, com opcao de reusar o registro
+  existente.
 
 ## Fora de escopo (continuam adiados para a Etapa 5)
 
@@ -281,3 +412,5 @@ Designer — Globex
   no-op.
 - Agendamento periodico (Django Q2) e monitoramento de fila.
 - Preenchimento automatico de `published_at` a partir do e-mail.
+- Deteccao por similaridade fuzzy e mesclagem (merge) de empresas/vagas
+  duplicadas — a Fatia 4 cobre apenas o aviso normalizado na criacao.

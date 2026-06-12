@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}{{ email.subject }}{% endblock %}
+
+{% block content %}
+  <h2>{{ email.subject }}</h2>
+  <p class="help">De {{ email.sender }} · recebido em {{ email.received_at }}</p>
+
+  <div class="actions">
+    {% if email.provider_link %}
+      <a class="btn btn-secondary" href="{{ email.provider_link }}" target="_blank" rel="noopener">Abrir no provedor</a>
+    {% endif %}
+    {% if email.application_id %}
+      <a href="{{ email.application.get_absolute_url }}">Ver candidatura</a>
+    {% endif %}
+  </div>
+
+  <div class="panel">
+    <h3>Corpo do e-mail</h3>
+    {% if email.body_text %}
+      <p>{{ email.body_text|linebreaksbr }}</p>
+    {% else %}
+      <p class="help">Corpo expurgado ou indisponivel.</p>
+    {% endif %}
+  </div>
+
+  {% with c=email.classification %}
+    {% if c %}
+      <div class="panel">
+        <h3>Classificacao do LLM</h3>
+        <p><strong>Resumo:</strong> {{ c.summary|default:"—" }}</p>
+        <p><strong>Status sugerido:</strong> {{ c.suggested_status|default:"—" }}
+          · <strong>Confianca:</strong> {{ c.confidence }}%
+          · <span class="badge badge-banda banda-{{ c.band }}">{{ c.band }}</span></p>
+        {% if c.rationale %}<p class="help"><strong>Racional:</strong> {{ c.rationale }}</p>{% endif %}
+      </div>
+    {% endif %}
+  {% endwith %}
+{% endblock %}

@@ -29,16 +29,34 @@ class CompanyForm(forms.ModelForm):
         }
 
 
+class _DateInput(forms.DateInput):
+    input_type = 'date'
+
+    def __init__(self, **kwargs):
+        kwargs.setdefault('format', '%Y-%m-%d')
+        super().__init__(**kwargs)
+
+
 class JobForm(forms.ModelForm):
     class Meta:
         model = Job
-        fields = ['company', 'role_title', 'source_url', 'location', 'remote', 'directed_to']
+        fields = [
+            'company',
+            'role_title',
+            'source_url',
+            'location',
+            'remote',
+            'published_at',
+            'directed_to',
+        ]
+        widgets = {'published_at': _DateInput()}
         labels = {
             'company': 'Empresa',
             'role_title': 'Cargo',
             'source_url': 'Link da vaga',
             'location': 'Localizacao',
             'remote': 'Remoto',
+            'published_at': 'Data de anuncio',
             'directed_to': 'Direcionada a',
         }
 

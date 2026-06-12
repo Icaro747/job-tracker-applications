@@ -3,8 +3,10 @@
 
 {% block content %}
   <h2>Revisao de classificacoes</h2>
-  <p class="help">E-mails processados pela classificacao automatica. Confirme, edite o status,
-    vincule a candidatura correta ou ignore.</p>
+  <p class="help">E-mails processados pela classificacao automatica. Cada e-mail traz uma
+    intencao sugerida — confirme ou corrija a intencao e, em seguida, conclua a acao
+    (vincular candidatura, criar vaga, processar a lista ou ignorar). Nada e aplicado
+    automaticamente.</p>
 
   {% for email in emails %}
     {% include "email_ingestion/_review_row.html" %}

@@ -18,6 +18,15 @@ class Company(models.Model):
         blank=True,
         related_name='created_companies',
     )
+    # E-mail que materializou este registro (proveniencia, Fatia 4). Nulo em
+    # criacao manual ou reuso de empresa existente.
+    source_email = models.ForeignKey(
+        'email_ingestion.InboundEmail',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='sourced_companies',
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -126,6 +135,11 @@ class Job(models.Model):
     source_url = models.URLField(blank=True)
     location = models.CharField(max_length=160, blank=True)
     remote = models.BooleanField(default=False)
+    # Data em que a vaga foi anunciada no mundo real (distinta de created_at,
+    # que e o registro interno). Propriedade objetiva da vaga, logo global.
+    published_at = models.DateField(
+        null=True, blank=True, verbose_name='data de anuncio'
+    )
     # Vaga enviada diretamente a um usuario (ex: recrutador). Nulo = vaga publica.
     directed_to = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -140,6 +154,15 @@ class Job(models.Model):
         null=True,
         blank=True,
         related_name='created_jobs',
+    )
+    # E-mail que materializou esta vaga (proveniencia, Fatia 4). Nulo em criacao
+    # manual.
+    source_email = models.ForeignKey(
+        'email_ingestion.InboundEmail',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='sourced_jobs',
     )
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -185,6 +208,11 @@ class JobApplication(models.Model):
         EMAIL = 'email', 'E-mail'
         EXTERNAL = 'external', 'Externo'
 
+    # Status "abertos": candidatura em andamento, ainda aguardando desfecho.
+    OPEN_STATUSES = frozenset(
+        {'applied', 'confirmed', 'screening', 'interview'}
+    )
+
     class NextActionType(models.TextChoices):
         FOLLOW_UP = 'follow_up', 'Follow-up'
         INTERVIEW = 'interview', 'Entrevista'
@@ -208,6 +236,15 @@ class JobApplication(models.Model):
     )
     next_action_description = models.TextField(blank=True)
     notes = models.TextField(blank=True)
+    # E-mail que materializou esta candidatura (proveniencia, Fatia 4). Nulo em
+    # criacao manual.
+    source_email = models.ForeignKey(
+        'email_ingestion.InboundEmail',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='sourced_applications',
+    )
     deleted_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -230,6 +267,51 @@ class JobApplication(models.Model):
     def next_action_overdue(self):
         """True quando ha proxima acao agendada com data ja vencida."""
         return self.next_action_at is not None and self.next_action_at < timezone.now()
+
+    @property
+    def origin_email(self):
+        """E-mail que originou a candidatura (Fatia 4).
+
+        Retorna ``source_email`` quando preenchido. Para candidaturas legadas
+        de origem e-mail sem ponteiro (auto-criadas pela Etapa 4 antiga), cai
+        para o e-mail vinculado mais antigo. ``None`` em candidatura manual.
+        """
+        if self.source_email_id:
+            return self.source_email
+        if self.origin == self.Origin.EMAIL:
+            return self.emails.order_by('received_at').first()
+        return None
+
+    @property
+    def announcement_received_at(self):
+        """Data do anuncio: ``received_at`` do e-mail mais antigo vinculado.
+
+        ``None`` em candidatura manual (sem e-mail), caso em que o marco fica
+        oculto.
+        """
+        oldest = self.emails.order_by('received_at').first()
+        return oldest.received_at if oldest else None
+
+    @property
+    def last_return_at(self):
+        """Ultimo retorno real da empresa: ``occurred_at`` do evento de e-mail
+        mais recente. ``None`` quando nenhuma resposta por e-mail chegou."""
+        entry = (
+            self.timeline.filter(
+                entry_type=ApplicationTimelineEntry.EntryType.EMAIL_UPDATE
+            )
+            .order_by('-occurred_at')
+            .first()
+        )
+        return entry.occurred_at if entry else None
+
+    @property
+    def awaiting_return(self):
+        """True quando a candidatura esta aberta e ainda sem retorno por e-mail.
+
+        Nesse caso a tela mostra "Aguardando retorno desde {applied_at}".
+        """
+        return self.status in self.OPEN_STATUSES and self.last_return_at is None
 
     def change_status(self, new_status, *, occurred_at=None):
         """Avanca o status, carimba ``last_status_at`` e registra na timeline.

@@ -13,6 +13,7 @@ from candidate_profile.models import CandidateProfile
 from email_ingestion.models import (
     EmailAccount,
     EmailClassification,
+    EmailDetectedOpportunity,
     EmailSenderRule,
     InboundEmail,
 )
@@ -125,3 +126,13 @@ class EmailClassificationFactory(factory.django.DjangoModelFactory):
     summary = factory.Sequence(lambda n: f'Resumo {n}')
     suggested_status = JobApplication.Status.INTERVIEW
     rationale = 'Justificativa de teste'
+
+
+class EmailDetectedOpportunityFactory(factory.django.DjangoModelFactory):
+    class Meta:
+        model = EmailDetectedOpportunity
+
+    classification = factory.SubFactory(EmailClassificationFactory)
+    company_name = factory.Sequence(lambda n: f'Empresa detectada {n}')
+    role_title = factory.Sequence(lambda n: f'Vaga detectada {n}')
+    source_url = factory.Faker('url')

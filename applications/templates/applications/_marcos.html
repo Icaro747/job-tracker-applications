@@ -1,0 +1,40 @@
+{% comment %}
+Painel de marcos da candidatura (Fatia 2): datas-chave rotuladas. Marcos
+ausentes mostram "—" ou um texto de estado. Renderizado na pagina completa,
+acima da timeline detalhada.
+{% endcomment %}
+<div class="panel">
+  <h3>Marcos</h3>
+  <ul class="marcos">
+    <li><strong>Criada em</strong> — {{ application.created_at|date:"d/m/Y" }}</li>
+
+    {% if application.announcement_received_at %}
+      <li><strong>Anuncio recebido em</strong> — {{ application.announcement_received_at|date:"d/m/Y" }}</li>
+    {% endif %}
+
+    <li>
+      <strong>Candidatura enviada em</strong> —
+      {% if application.applied_at %}{{ application.applied_at|date:"d/m/Y" }}{% else %}<span class="help">aguardando envio</span>{% endif %}
+    </li>
+
+    <li>
+      <strong>Ultimo retorno em</strong> —
+      {% if application.last_return_at %}
+        {{ application.last_return_at|date:"d/m/Y" }}
+      {% elif application.awaiting_return %}
+        <span class="help">Aguardando retorno desde {{ application.applied_at|date:"d/m/Y"|default:"—" }}</span>
+      {% else %}
+        —
+      {% endif %}
+    </li>
+
+    <li>
+      <strong>Proximo passo</strong> —
+      {% if application.next_action_at %}
+        {{ application.get_next_action_type_display }} em {{ application.next_action_at|date:"d/m/Y H:i" }}
+      {% else %}
+        <span class="help">nenhum proximo passo definido</span>
+      {% endif %}
+    </li>
+  </ul>
+</div>

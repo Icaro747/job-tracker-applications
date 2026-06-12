@@ -4,16 +4,35 @@
 {% block content %}
   <h2>{{ job.role_title }}</h2>
   <div class="actions">
-    <a class="btn" href="{% url 'applications:application_create' %}?job={{ job.pk }}">Candidatar-se</a>
+    {% if not user_application %}
+      <a class="btn" href="{% url 'applications:application_create' %}?job={{ job.pk }}">Candidatar-se</a>
+    {% endif %}
     <a class="btn btn-secondary" href="{% url 'applications:job_update' job.pk %}">Editar</a>
     <a class="btn btn-danger" href="{% url 'applications:job_delete' job.pk %}">Excluir</a>
     <a href="{% url 'applications:job_list' %}">← Voltar</a>
   </div>
 
   <div class="panel">
+    {% if user_application %}
+      <p>
+        Voce se candidatou em
+        {% if user_application.applied_at %}{{ user_application.applied_at|date:"d/m/Y" }}{% else %}{{ user_application.created_at|date:"d/m/Y" }}{% endif %}
+        · status atual: {{ user_application.get_status_display }}
+        <a href="{{ user_application.get_absolute_url }}">ver candidatura</a>
+      </p>
+    {% else %}
+      <p>Voce ainda nao se candidatou.</p>
+    {% endif %}
+  </div>
+
+  <div class="panel">
     <p><strong>Empresa:</strong> <a href="{{ job.company.get_absolute_url }}">{{ job.company.name }}</a></p>
+    {% if job.published_at %}<p><strong>Anunciada em:</strong> {{ job.published_at|date:"d/m/Y" }}</p>{% endif %}
+    <p><strong>Cadastrada no sistema em:</strong> {{ job.created_at|date:"d/m/Y" }}</p>
     <p><strong>Local:</strong> {{ job.location|default:"-" }} {% if job.remote %}<span class="tag">remoto</span>{% endif %}</p>
     <p><strong>Link:</strong> {% if job.source_url %}<a href="{{ job.source_url }}">{{ job.source_url }}</a>{% else %}-{% endif %}</p>
     {% if job.directed_to %}<p><span class="tag">Direcionada para {{ job.directed_to }}</span></p>{% endif %}
   </div>
+
+  {% include "applications/_origem.html" with record=job %}
 {% endblock %}

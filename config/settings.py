@@ -241,9 +241,13 @@ GMAIL_REDIRECT_URI = os.environ.get(
 OLLAMA_HOST = os.environ.get('OLLAMA_HOST', 'http://localhost:11434')
 OLLAMA_MODEL = os.environ.get('OLLAMA_MODEL', 'llama3.2')
 LLM_TIMEOUT = int(os.environ.get('LLM_TIMEOUT', '60'))
-# Acima deste limiar (0-100) a classificacao e aplicada automaticamente; abaixo,
-# o e-mail aguarda revisao manual.
+# Faixas de confianca (0-100) — apoio visual apenas. Nada e aplicado ou criado
+# automaticamente (Etapa 4, Fatia 1): a classificacao do LLM e sempre sugestao e
+# todo e-mail vai para revisao manual. Confianca >= THRESHOLD => selo "alta";
+# >= BAND_MEDIUM => "media"; abaixo => "baixa". Serve para ordenar e rotular a
+# fila de revisao, nao para decidir.
 LLM_CONFIDENCE_THRESHOLD = int(os.environ.get('LLM_CONFIDENCE_THRESHOLD', '80'))
+LLM_CONFIDENCE_BAND_MEDIUM = int(os.environ.get('LLM_CONFIDENCE_BAND_MEDIUM', '50'))
 
 
 # O mesmo fluxo OAuth do Google autentica o usuario e, futuramente, autoriza

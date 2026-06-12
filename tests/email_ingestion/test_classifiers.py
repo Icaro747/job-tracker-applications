@@ -51,8 +51,8 @@ def test_classify_parses_structured_json(monkeypatch):
             'confidence': 92,
             'rationale': 'O e-mail marca uma entrevista',
             'application_id': app.pk,
-            'is_new_opportunity': False,
-            'opportunity': None,
+            'intent': 'atualizacao',
+            'opportunities': [],
         }
     )
     captured = _patch_post(monkeypatch, content)
@@ -63,7 +63,8 @@ def test_classify_parses_structured_json(monkeypatch):
     assert result.suggested_status == 'interview'
     assert result.confidence == 92
     assert result.application_id == app.pk
-    assert result.is_new_opportunity is False
+    assert result.intent == 'atualizacao'
+    assert result.opportunities == []
     # contexto enviado inclui a candidatura aberta e o e-mail
     user_msg = captured['json']['messages'][1]['content']
     assert f'id={app.pk}' in user_msg
@@ -80,22 +81,101 @@ def test_classify_parses_new_opportunity(monkeypatch):
             'confidence': 70,
             'rationale': 'Oferta de emprego nova',
             'application_id': None,
-            'is_new_opportunity': True,
-            'opportunity': {
-                'company_name': 'ACME',
-                'role_title': 'Dev Backend',
-                'source_url': 'https://acme.com/vaga',
-            },
+            'intent': 'nova_unica',
+            'opportunities': [
+                {
+                    'company_name': 'ACME',
+                    'role_title': 'Dev Backend',
+                    'source_url': 'https://acme.com/vaga',
+                }
+            ],
         }
     )
     _patch_post(monkeypatch, content)
 
     result = OllamaClassifier().classify(email, [])
 
-    assert result.is_new_opportunity is True
-    assert result.opportunity.company_name == 'ACME'
-    assert result.opportunity.role_title == 'Dev Backend'
-    assert result.opportunity.source_url == 'https://acme.com/vaga'
+    assert result.intent == 'nova_unica'
+    assert len(result.opportunities) == 1
+    opp = result.opportunities[0]
+    assert opp.company_name == 'ACME'
+    assert opp.role_title == 'Dev Backend'
+    assert opp.source_url == 'https://acme.com/vaga'
+
+
+def test_classify_parses_list_of_opportunities(monkeypatch):
+    email = InboundEmailFactory()
+    content = json.dumps(
+        {
+            'summary': '3 vagas para voce',
+            'suggested_status': '',
+            'confidence': 60,
+            'rationale': 'Newsletter de vagas',
+            'application_id': None,
+            'intent': 'lista',
+            'opportunities': [
+                {'company_name': 'ACME', 'role_title': 'Dev Backend'},
+                {'company_name': 'Globex', 'role_title': 'Designer'},
+                {
+                    'company_name': 'Initech',
+                    'role_title': 'QA',
+                    'source_url': 'https://initech.com/qa',
+                },
+            ],
+        }
+    )
+    _patch_post(monkeypatch, content)
+
+    result = OllamaClassifier().classify(email, [])
+
+    assert result.intent == 'lista'
+    assert [o.company_name for o in result.opportunities] == [
+        'ACME',
+        'Globex',
+        'Initech',
+    ]
+    # source_url ausente vira string vazia (parse defensivo)
+    assert result.opportunities[0].source_url == ''
+    assert result.opportunities[2].source_url == 'https://initech.com/qa'
+
+
+def test_classify_invalid_intent_becomes_blank(monkeypatch):
+    email = InboundEmailFactory()
+    content = json.dumps(
+        {
+            'summary': 'Algo',
+            'confidence': 10,
+            'intent': 'xpto-invalido',
+            'opportunities': [],
+        }
+    )
+    _patch_post(monkeypatch, content)
+
+    result = OllamaClassifier().classify(email, [])
+
+    assert result.intent == ''
+
+
+def test_classify_ignores_malformed_opportunity_entries(monkeypatch):
+    email = InboundEmailFactory()
+    content = json.dumps(
+        {
+            'summary': 'Lista com lixo',
+            'confidence': 10,
+            'intent': 'lista',
+            'opportunities': [
+                {'company_name': 'ACME', 'role_title': 'Dev'},
+                'isto nao e um objeto',
+                None,
+            ],
+        }
+    )
+    _patch_post(monkeypatch, content)
+
+    result = OllamaClassifier().classify(email, [])
+
+    assert len(result.opportunities) == 1
+    assert result.opportunities[0].company_name == 'ACME'
 
 
 def test_classify_raises_on_malformed_json(monkeypatch):

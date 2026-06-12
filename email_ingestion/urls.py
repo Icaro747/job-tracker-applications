@@ -25,9 +25,16 @@ urlpatterns = [
     ),
     path('regras/<int:pk>/editar/', views.EmailSenderRuleUpdateView.as_view(), name='rule_update'),
     path('regras/<int:pk>/excluir/', views.EmailSenderRuleDeleteView.as_view(), name='rule_delete'),
+    # Tela interna de detalhe do e-mail (proveniencia, Fatia 4)
+    path('emails/<int:pk>/', views.InboundEmailDetailView.as_view(), name='email_detail'),
     # Tela de revisao de classificacoes (Fila 2)
     path('revisao/', views.ClassificationReviewListView.as_view(), name='review_list'),
+    path('revisao/<int:pk>/intencao/', views.email_set_intent, name='email_set_intent'),
     path('revisao/<int:pk>/confirmar/', views.email_confirm_apply, name='email_confirm'),
+    path('revisao/<int:pk>/criar-vaga/', views.email_create_job, name='email_create_job'),
+    path('revisao/<int:pk>/criar-item/', views.email_create_list_item, name='email_create_list_item'),
+    path('revisao/<int:pk>/criar-candidatura/', views.email_create_application, name='email_create_application'),
+    path('revisao/<int:pk>/descartar/', views.email_discard, name='email_discard'),
     path('revisao/<int:pk>/vincular/', views.email_link_application, name='email_link'),
     path('revisao/<int:pk>/ignorar/', views.email_ignore, name='email_ignore'),
 ]

@@ -1,0 +1,7 @@
+{# Volta ao passo 1 do assistente: limpa a intencao confirmada. #}
+<form class="inline-form"
+      hx-post="{% url 'email_ingestion:email_set_intent' email.pk %}"
+      hx-target="#email-{{ email.pk }}" hx-swap="outerHTML">
+  <input type="hidden" name="intent" value="">
+  <button type="submit" class="btn-secondary">Corrigir intencao</button>
+</form>

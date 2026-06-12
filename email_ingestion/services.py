@@ -2,9 +2,10 @@
 
 A **Fila 1** (``scan_account``) captura e-mails novos de cada conta ativa, aplica
 as regras de filtragem e registra os que passam como ``InboundEmail`` pendentes.
-A **Fila 2** (``classify_email``) envia cada e-mail ao LLM, registra a
-classificacao e decide entre aplicar o status automaticamente (alta confianca) ou
-encaminhar para revisao manual.
+A **Fila 2** (``classify_email``) envia cada e-mail ao LLM e registra a
+classificacao como *sugestao*: todo e-mail vai para revisao manual
+(``needs_review``) — nada e aplicado ou criado automaticamente (Etapa 4,
+Fatia 1). A confianca apenas ordena e rotula a fila de revisao.
 
 Ambas as filas sao sincronas e testaveis. O agendamento periodico (Django Q2)
 chega na Etapa 5; as notificacoes (modelo ``Notification`` e painel) tambem — por
@@ -14,19 +15,18 @@ from __future__ import annotations
 
 import logging
 
-from django.conf import settings
 from django.utils import timezone
 
-from applications.models import (
-    Company,
-    CompanyAuditLog,
-    Job,
-    JobApplication,
-)
+from applications.models import JobApplication
 
 from .adapters import get_adapter
 from .classifiers import ClassifierError, get_classifier
-from .models import EmailAccount, EmailClassification, InboundEmail
+from .models import (
+    EmailAccount,
+    EmailClassification,
+    EmailDetectedOpportunity,
+    InboundEmail,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -63,9 +63,12 @@ def _open_applications(user):
 def classify_email(email: InboundEmail, classifier=None) -> EmailClassification | None:
     """Classifica um e-mail pendente via LLM (Fila 2).
 
-    Cria a ``EmailClassification`` e decide o fluxo pela confianca e clareza da
-    candidatura identificada. Se o LLM falhar, o e-mail permanece ``pending`` e a
-    funcao retorna ``None`` — o pipeline nao trava.
+    A classificacao do LLM e *sempre sugestao* (Etapa 4, Fatia 1): grava a
+    ``EmailClassification`` como apoio, marca o e-mail como ``needs_review`` e
+    nunca aplica status nem cria Empresa/Vaga/Candidatura. A candidatura e o
+    status sugeridos sao apenas pre-selecionados para a revisao manual. Se o LLM
+    falhar, o e-mail permanece ``pending`` e a funcao retorna ``None`` — o
+    pipeline nao trava.
     """
     owner = email.email_account.user if email.email_account else None
     applications = _open_applications(owner) if owner else []
@@ -83,75 +86,33 @@ def classify_email(email: InboundEmail, classifier=None) -> EmailClassification 
         summary=result.summary,
         suggested_status=result.suggested_status,
         rationale=result.rationale,
+        suggested_intent=result.intent,
     )
-    email.inferred_application_status = result.suggested_status
-
-    if result.is_new_opportunity and owner is not None:
-        _create_directed_job(email, owner, result)
-    else:
-        _apply_or_review(email, owner, applications, result)
-
-    return classification
-
-
-def _apply_or_review(email, owner, applications, result) -> None:
-    """Vincula e aplica o status (alta confianca) ou marca para revisao."""
-    threshold = settings.LLM_CONFIDENCE_THRESHOLD
-    by_id = {app.pk: app for app in applications}
-    application = by_id.get(result.application_id)
-    status_valid = result.suggested_status in JobApplication.Status.values
-
-    high_confidence = (
-        result.confidence >= threshold and application is not None and status_valid
-    )
-    if high_confidence:
-        email.application = application
-        email.processing_status = InboundEmail.ProcessingStatus.CLASSIFIED
-        application.register_email_update(
-            email=email, new_status=result.suggested_status, summary=result.summary
+    # Cada vaga detectada vira uma linha filha (emenda 13, Fatia 2): zero
+    # (atualizacao/irrelevante), uma (nova unica) ou varias (lista).
+    # ``reviewed_intent`` fica em branco — o usuario confirma a intencao no
+    # passo 1 da revisao.
+    for opp in result.opportunities:
+        EmailDetectedOpportunity.objects.create(
+            classification=classification,
+            company_name=(opp.company_name or '').strip(),
+            role_title=(opp.role_title or '').strip(),
+            source_url=(opp.source_url or ''),
         )
-        notify(owner, 'email_classified', email=email, application=application)
-    else:
-        # Baixa confianca, candidatura ambigua ou status invalido: revisao manual.
-        if application is not None:
-            email.application = application
-        email.processing_status = InboundEmail.ProcessingStatus.NEEDS_REVIEW
-        notify(owner, 'email_needs_review', email=email)
 
+    # Apenas apoio: pre-seleciona candidatura e status, mas nao aplica nada.
+    email.inferred_application_status = result.suggested_status
+    by_id = {app.pk: app for app in applications}
+    suggested_app = by_id.get(result.application_id)
+    if suggested_app is not None:
+        email.application = suggested_app
+    email.processing_status = InboundEmail.ProcessingStatus.NEEDS_REVIEW
     email.save(
         update_fields=['application', 'processing_status', 'inferred_application_status']
     )
 
-
-def _create_directed_job(email, owner, result) -> None:
-    """Cria vaga + candidatura rascunho a partir de uma oportunidade detectada."""
-    opp = result.opportunity
-    company_name = (opp.company_name if opp else '').strip() or 'Empresa nao identificada'
-    company, created = Company.objects.get_or_create(
-        name=company_name, defaults={'created_by': owner}
-    )
-    if created:
-        CompanyAuditLog.record_create(company, owner)
-
-    job = Job.objects.create(
-        company=company,
-        role_title=(opp.role_title if opp else '').strip() or 'Vaga sem titulo',
-        source_url=(opp.source_url if opp else '') or '',
-        directed_to=owner,
-        created_by=owner,
-    )
-    application = JobApplication.objects.create(
-        user=owner,
-        job=job,
-        status=JobApplication.Status.DRAFT,
-        origin=JobApplication.Origin.EMAIL,
-    )
-    email.application = application
-    email.processing_status = InboundEmail.ProcessingStatus.CLASSIFIED
-    email.save(
-        update_fields=['application', 'processing_status', 'inferred_application_status']
-    )
-    notify(owner, 'directed_job_detected', email=email, application=application)
+    notify(owner, 'email_needs_review', email=email)
+    return classification
 
 
 def enqueue_classification(email: InboundEmail) -> None:
