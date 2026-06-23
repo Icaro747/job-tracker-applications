@@ -10,6 +10,7 @@ from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin
+from django.db.models import Q
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse, reverse_lazy
 from django.utils import timezone
@@ -286,26 +287,82 @@ def _render_review_row(request, email, **extra):
 
 
 class ClassificationReviewListView(LoginRequiredMixin, ListView):
-    """Lista os e-mails ja processados pela Fila 2 para revisao do usuario."""
+    """Lista os e-mails ja processados pela Fila 2 para revisao do usuario.
+
+    Filtros combinaveis (E) via querystring: ``status`` (status do e-mail),
+    ``band`` (faixa de confianca) e ``q`` (busca por assunto/remetente). Por
+    padrao os e-mails **ignorados** ficam fora da lista — so aparecem quando o
+    usuario escolhe o status ``Ignorado`` ou ``Todos``.
+    """
 
     context_object_name = 'emails'
     template_name = 'email_ingestion/review_list.html'
 
+    # Opcoes do select de status: '' esconde ignorados; 'all' mostra tudo.
+    STATUS_FILTERS = [
+        ('', 'Pendentes de acao (esconde ignorados)'),
+        (InboundEmail.ProcessingStatus.NEEDS_REVIEW, 'Precisa revisao'),
+        (InboundEmail.ProcessingStatus.CLASSIFIED, 'Classificado'),
+        (InboundEmail.ProcessingStatus.IGNORED, 'Ignorado'),
+        ('all', 'Todos (inclui ignorados)'),
+    ]
+    BAND_FILTERS = [('', 'Todas'), ('alta', 'Alta'), ('media', 'Media'), ('baixa', 'Baixa')]
+
     def get_queryset(self):
-        # Ordena por confianca (maior primeiro): a faixa apenas prioriza a
-        # revisao, nada e escondido (Etapa 4, Fatia 1).
-        return (
+        qs = (
             InboundEmail.objects.filter(email_account__user=self.request.user)
             .exclude(processing_status=InboundEmail.ProcessingStatus.PENDING)
             .select_related('classification', 'application__job__company')
-            .order_by('-classification__confidence', '-received_at')
         )
+        qs = self._filter_status(qs)
+        qs = self._filter_band(qs)
+        qs = self._filter_search(qs)
+        # Ordena por confianca (maior primeiro): a faixa apenas prioriza a
+        # revisao, nada e escondido alem do filtro explicito (Etapa 4, Fatia 1).
+        return qs.order_by('-classification__confidence', '-received_at')
+
+    def _filter_status(self, qs):
+        status = self.request.GET.get('status', '')
+        PS = InboundEmail.ProcessingStatus
+        if status in (PS.NEEDS_REVIEW, PS.CLASSIFIED, PS.IGNORED):
+            return qs.filter(processing_status=status)
+        if status == 'all':
+            return qs
+        # Padrao: esconde os ja ignorados.
+        return qs.exclude(processing_status=PS.IGNORED)
+
+    def _filter_band(self, qs):
+        band = self.request.GET.get('band', '')
+        high = settings.LLM_CONFIDENCE_THRESHOLD
+        medium = settings.LLM_CONFIDENCE_BAND_MEDIUM
+        if band == 'alta':
+            return qs.filter(classification__confidence__gte=high)
+        if band == 'media':
+            return qs.filter(
+                classification__confidence__gte=medium,
+                classification__confidence__lt=high,
+            )
+        if band == 'baixa':
+            return qs.filter(classification__confidence__lt=medium)
+        return qs
+
+    def _filter_search(self, qs):
+        termo = self.request.GET.get('q', '').strip()
+        if termo:
+            return qs.filter(Q(subject__icontains=termo) | Q(sender__icontains=termo))
+        return qs
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context['applications'] = _user_applications(self.request.user)
         context['status_choices'] = JobApplication.Status.choices
         context['intent_choices'] = EmailClassification.Intent.choices
+        # Estado dos filtros (para repopular o formulario).
+        context['status_filters'] = self.STATUS_FILTERS
+        context['band_filters'] = self.BAND_FILTERS
+        context['filtro_status'] = self.request.GET.get('status', '')
+        context['filtro_band'] = self.request.GET.get('band', '')
+        context['filtro_q'] = self.request.GET.get('q', '').strip()
         return context
 
 

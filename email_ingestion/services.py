@@ -21,6 +21,7 @@ from applications.models import JobApplication
 
 from .adapters import get_adapter
 from .classifiers import ClassifierError, get_classifier
+from .classifiers.link_attribution import attribute_source_urls
 from .models import (
     EmailAccount,
     EmailClassification,
@@ -88,6 +89,10 @@ def classify_email(email: InboundEmail, classifier=None) -> EmailClassification 
         rationale=result.rationale,
         suggested_intent=result.intent,
     )
+    # Fase 2: a 1a passada classifica o corpo SEM links; aqui recuperamos os
+    # links do corpo original e os atribuimos deterministicamente a cada vaga
+    # (descartando URLs que o modelo tenha inventado).
+    attribute_source_urls(result.opportunities, email.body_text)
     # Cada vaga detectada vira uma linha filha (emenda 13, Fatia 2): zero
     # (atualizacao/irrelevante), uma (nova unica) ou varias (lista).
     # ``reviewed_intent`` fica em branco — o usuario confirma a intencao no

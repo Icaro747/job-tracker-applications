@@ -241,6 +241,12 @@ GMAIL_REDIRECT_URI = os.environ.get(
 OLLAMA_HOST = os.environ.get('OLLAMA_HOST', 'http://localhost:11434')
 OLLAMA_MODEL = os.environ.get('OLLAMA_MODEL', 'llama3.2')
 LLM_TIMEOUT = int(os.environ.get('LLM_TIMEOUT', '60'))
+# Determinismo da chamada ao LLM. Por padrao o Ollama usa temperatura 0.8 e seed
+# aleatorio, o que faz o MESMO e-mail virar respostas diferentes a cada execucao.
+# Fixar temperatura 0 + seed torna a classificacao reprodutivel (base para medir
+# se cada melhoria do prompt/modelo ajudou de fato).
+LLM_TEMPERATURE = float(os.environ.get('LLM_TEMPERATURE', '0'))
+LLM_SEED = int(os.environ.get('LLM_SEED', '42'))
 # Faixas de confianca (0-100) — apoio visual apenas. Nada e aplicado ou criado
 # automaticamente (Etapa 4, Fatia 1): a classificacao do LLM e sempre sugestao e
 # todo e-mail vai para revisao manual. Confianca >= THRESHOLD => selo "alta";

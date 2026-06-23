@@ -83,18 +83,18 @@ def test_low_confidence_routes_to_review_without_status_change():
 
 def test_new_opportunity_is_suggested_not_created():
     account = EmailAccountFactory()
-    email = InboundEmailFactory(email_account=account)
+    # O link vem do CORPO (Fase 2 o atribui), nao do palpite do LLM.
+    email = InboundEmailFactory(
+        email_account=account,
+        body_text='Dev Backend na ACME Tech\nVisualizar vaga: https://acme.com/vaga\n',
+    )
     classifier = FakeClassifier(
         ClassificationResult(
             summary='Nova vaga de backend',
             confidence=88,
             intent=EmailClassification.Intent.NEW_SINGLE,
             opportunities=[
-                DetectedOpportunity(
-                    company_name='ACME Tech',
-                    role_title='Dev Backend',
-                    source_url='https://acme.com/vaga',
-                )
+                DetectedOpportunity(company_name='ACME Tech', role_title='Dev Backend')
             ],
         )
     )
@@ -119,8 +119,43 @@ def test_new_opportunity_is_suggested_not_created():
     opp = opportunities[0]
     assert opp.company_name == 'ACME Tech'
     assert opp.role_title == 'Dev Backend'
+    # Fase 2: link recuperado do corpo e atribuido a vaga.
     assert opp.source_url == 'https://acme.com/vaga'
     assert opp.state == 'pending'
+
+
+def test_source_urls_attributed_from_body_per_opportunity():
+    """Fase 2: cada vaga detectada recebe o link certo, casado pelo corpo."""
+    account = EmailAccountFactory()
+    email = InboundEmailFactory(
+        email_account=account,
+        body_text=(
+            'Backend Junior - IT BSM\nBTG Pactual\n'
+            'Visualizar vaga: https://linkedin.com/comm/jobs/view/4404026219/\n'
+            '------\n'
+            'Engenharia de Software Senior\nItau Unibanco\n'
+            'Visualizar vaga: https://linkedin.com/comm/jobs/view/4421208098/\n'
+        ),
+    )
+    classifier = FakeClassifier(
+        ClassificationResult(
+            summary='Vagas',
+            confidence=60,
+            intent=EmailClassification.Intent.LIST,
+            opportunities=[
+                # ordem trocada de proposito: o casamento e por texto, nao posicao
+                DetectedOpportunity(company_name='Itau Unibanco', role_title='Engenharia de Software'),
+                DetectedOpportunity(company_name='BTG Pactual', role_title='Backend IT BSM'),
+            ],
+        )
+    )
+
+    classify_email(email, classifier=classifier)
+    email.refresh_from_db()
+
+    by_company = {o.company_name: o for o in email.classification.opportunities.all()}
+    assert '/jobs/view/4421208098/' in by_company['Itau Unibanco'].source_url
+    assert '/jobs/view/4404026219/' in by_company['BTG Pactual'].source_url
 
 
 def test_list_intent_persists_one_row_per_opportunity():

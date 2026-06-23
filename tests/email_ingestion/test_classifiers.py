@@ -7,6 +7,7 @@ import json
 
 import pytest
 import requests
+from django.conf import settings
 
 from email_ingestion.classifiers import OllamaClassifier
 from email_ingestion.classifiers.base import ClassifierError
@@ -71,6 +72,68 @@ def test_classify_parses_structured_json(monkeypatch):
     assert 'rh@empresa.com' in user_msg
     assert captured['url'].endswith('/api/chat')
 
+
+def test_classify_sends_deterministic_options(monkeypatch):
+    # Sem options, o Ollama amostra com temperatura 0.8 e seed aleatorio: o
+    # mesmo e-mail vira respostas diferentes. Fixamos temperatura 0 + seed.
+    email = InboundEmailFactory()
+    content = json.dumps({'summary': 'x', 'confidence': 50, 'intent': 'atualizacao'})
+    captured = _patch_post(monkeypatch, content)
+
+    OllamaClassifier().classify(email, [])
+
+    assert captured['json']['options'] == {
+        'temperature': settings.LLM_TEMPERATURE,
+        'top_p': 1,
+        'seed': settings.LLM_SEED,
+    }
+
+
+def test_classify_sends_json_schema_format(monkeypatch):
+    # 'format' deixa de ser a string 'json' (so garante "e JSON") e passa a ser
+    # um JSON Schema completo, restringindo intent/status a valores validos.
+    email = InboundEmailFactory()
+    content = json.dumps({'summary': 'x', 'confidence': 50, 'intent': 'atualizacao'})
+    captured = _patch_post(monkeypatch, content)
+
+    OllamaClassifier().classify(email, [])
+
+    fmt = captured['json']['format']
+    assert isinstance(fmt, dict)
+    assert fmt['type'] == 'object'
+    assert 'intent' in fmt['properties']
+    assert 'enum' in fmt['properties']['intent']
+    assert 'suggested_status' in fmt['properties']
+    assert 'enum' in fmt['properties']['suggested_status']
+
+
+def test_classify_normalizes_body_before_sending_prompt(monkeypatch):
+    url = 'https://www.linkedin.com/comm/jobs/alerts?lipi=3Durn&midToken=3Dabc'
+    raw_body = f'S=C3=A3o Paulo\nLink: {url}\nPr=C3=B3xima vaga'
+    email = InboundEmailFactory(body_text=raw_body)
+    content = json.dumps(
+        {
+            'summary': 'Lista de vagas',
+            'suggested_status': '',
+            'confidence': 60,
+            'rationale': 'Texto normalizado',
+            'application_id': None,
+            'intent': 'lista',
+            'opportunities': [],
+        }
+    )
+    captured = _patch_post(monkeypatch, content)
+
+    OllamaClassifier().classify(email, [])
+
+    user_msg = captured['json']['messages'][1]['content']
+    assert 'São Paulo' in user_msg
+    assert 'Próxima vaga' in user_msg
+    # 1a passada: URLs sao removidas do corpo enviado (volta na Fase 2).
+    assert 'http' not in user_msg
+    assert url not in user_msg
+    assert 'S=C3=A3o Paulo' not in user_msg
+    assert email.body_text == raw_body
 
 def test_classify_parses_new_opportunity(monkeypatch):
     email = InboundEmailFactory()
@@ -181,6 +244,35 @@ def test_classify_ignores_malformed_opportunity_entries(monkeypatch):
 def test_classify_raises_on_malformed_json(monkeypatch):
     email = InboundEmailFactory()
     _patch_post(monkeypatch, 'isto nao e json')
+
+    with pytest.raises(ClassifierError):
+        OllamaClassifier().classify(email, [])
+
+
+def test_classify_raises_when_model_returns_offschema_object(monkeypatch):
+    """Alucinacao de schema: o modelo devolve JSON valido com chaves erradas.
+
+    Sem nenhuma das nossas chaves, devolver um resultado vazio seria um erro
+    silencioso — preferimos sinalizar (ClassifierError) para o e-mail ser
+    reprocessado em vez de virar uma classificacao vazia.
+    """
+    email = InboundEmailFactory()
+    content = json.dumps(
+        {
+            'candidaturas_abertas': [],
+            'links_vagas': ['https://x/1'],
+            'vagas': [{'titulo': 'Dev', 'companhia': 'BTG'}],
+        }
+    )
+    _patch_post(monkeypatch, content)
+
+    with pytest.raises(ClassifierError):
+        OllamaClassifier().classify(email, [])
+
+
+def test_classify_raises_when_model_returns_non_object(monkeypatch):
+    email = InboundEmailFactory()
+    _patch_post(monkeypatch, json.dumps(['vaga1', 'vaga2']))
 
     with pytest.raises(ClassifierError):
         OllamaClassifier().classify(email, [])

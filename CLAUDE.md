@@ -22,6 +22,7 @@ Read the docs below before touching the areas they cover — they describe **int
 | [`docs/specs.md`](docs/specs.md) | Condensed system spec (stack, models, pipeline, cross-cutting business rules) in one file. |
 | [`docs/flow-issues/`](docs/flow-issues/) | Diagnostics of real-use flow/UX/business-rule problems **before** they become specs or tasks — describes the problem and open questions, not a decision. |
 | [`docs/ollama-analise-email.md`](docs/ollama-analise-email.md) | Notes on the local Ollama email-classification analysis. |
+| [`docs/testes-ia-email.md`](docs/testes-ia-email.md) | How to prepare, run, and read the email-extraction + AI-classification eval tests (custom emails in `tests/email_ingestion/llm_cases.yaml`; opt-in real-Ollama layer with `-m llm`). |
 | [`.claude/skills/`](.claude/skills/) | Reusable working patterns: `htmx-patterns`, `django-models`, `django-forms`, `django-templates`, `pytest-django-patterns`, `tdd`, `systematic-debugging`, etc. |
 
 ## Commands

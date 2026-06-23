@@ -22,11 +22,63 @@ from .base import (
     DetectedOpportunity,
     LLMClassifierAdapter,
 )
+from .body_normalization import body_for_classification
 
 # Codigos de status que o modelo pode sugerir (os mesmos da candidatura).
 _VALID_STATUSES = [choice.value for choice in JobApplication.Status]
 # Intencoes validas (emenda 13) — qualquer outro valor do modelo vira vazio.
 _VALID_INTENTS = frozenset(EmailClassification.Intent.values)
+# Chaves que uma resposta valida deve conter ao menos uma. Se o modelo devolve um
+# objeto sem nenhuma delas (alucinacao de schema, ex.: {"vagas": [...]}), tratamos
+# como falha em vez de produzir uma classificacao vazia (erro silencioso).
+_EXPECTED_KEYS = frozenset(
+    {
+        'summary',
+        'suggested_status',
+        'confidence',
+        'rationale',
+        'application_id',
+        'intent',
+        'opportunities',
+    }
+)
+
+# JSON Schema da resposta (Ollama "structured outputs"). Diferente de
+# ``format: 'json'`` (que so garante "e JSON"), o schema fixa a FORMA: enums em
+# intent/suggested_status cortam alucinacao na origem. O parse defensivo de
+# ``_to_result`` e o guard ``_EXPECTED_KEYS`` continuam como rede de seguranca
+# caso o servidor ignore o schema.
+RESPONSE_FORMAT = {
+    'type': 'object',
+    'properties': {
+        'summary': {'type': 'string'},
+        'suggested_status': {'type': 'string', 'enum': _VALID_STATUSES + ['']},
+        'confidence': {'type': 'number'},
+        'rationale': {'type': 'string'},
+        'application_id': {'type': ['integer', 'null']},
+        'intent': {'type': 'string', 'enum': sorted(_VALID_INTENTS) + ['']},
+        'opportunities': {
+            'type': 'array',
+            'items': {
+                'type': 'object',
+                'properties': {
+                    'company_name': {'type': 'string'},
+                    'role_title': {'type': 'string'},
+                    'source_url': {'type': 'string'},
+                },
+            },
+        },
+    },
+    'required': [
+        'summary',
+        'suggested_status',
+        'confidence',
+        'rationale',
+        'application_id',
+        'intent',
+        'opportunities',
+    ],
+}
 
 _SYSTEM_PROMPT = (
     'Voce e um assistente que classifica e-mails de processos seletivos de '
@@ -60,6 +112,7 @@ class OllamaClassifier(LLMClassifierAdapter):
         return _SYSTEM_PROMPT.format(statuses=', '.join(_VALID_STATUSES))
 
     def _user_prompt(self, email, applications: Sequence) -> str:
+        body_text = body_for_classification(email.body_text)
         if applications:
             linhas = [
                 f'- id={app.pk}: {app.job.company.name} / {app.job.role_title} '
@@ -72,7 +125,7 @@ class OllamaClassifier(LLMClassifierAdapter):
         return (
             f'Remetente: {email.sender}\n'
             f'Assunto: {email.subject}\n'
-            f'Corpo:\n{email.body_text}\n\n'
+            f'Corpo:\n{body_text}\n\n'
             f'Candidaturas abertas do usuario:\n{candidaturas}'
         )
 
@@ -84,8 +137,15 @@ class OllamaClassifier(LLMClassifierAdapter):
                 {'role': 'system', 'content': self._system_prompt()},
                 {'role': 'user', 'content': self._user_prompt(email, applications)},
             ],
-            'format': 'json',
+            'format': RESPONSE_FORMAT,
             'stream': False,
+            # Determinismo: temperatura 0 + seed fixo tornam a mesma entrada
+            # reprodutivel (o default do Ollama, temp 0.8, varia a cada chamada).
+            'options': {
+                'temperature': settings.LLM_TEMPERATURE,
+                'top_p': 1,
+                'seed': settings.LLM_SEED,
+            },
         }
         try:
             response = requests.post(
@@ -96,6 +156,12 @@ class OllamaClassifier(LLMClassifierAdapter):
             data = json.loads(content)
         except (requests.RequestException, KeyError, ValueError) as exc:
             raise ClassifierError(f'Falha ao classificar via Ollama: {exc}') from exc
+
+        if not isinstance(data, dict) or _EXPECTED_KEYS.isdisjoint(data):
+            raise ClassifierError(
+                'Resposta fora do schema esperado (possivel alucinacao); '
+                f'chaves recebidas: {sorted(data)[:8] if isinstance(data, dict) else type(data).__name__}'
+            )
 
         return self._to_result(data)
 

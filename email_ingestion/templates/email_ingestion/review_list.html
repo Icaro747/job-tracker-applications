@@ -8,6 +8,31 @@
     (vincular candidatura, criar vaga, processar a lista ou ignorar). Nada e aplicado
     automaticamente.</p>
 
+  <form method="get" class="review-filtros">
+    <label>
+      Status
+      <select name="status">
+        {% for valor, rotulo in status_filters %}
+          <option value="{{ valor }}" {% if valor == filtro_status %}selected{% endif %}>{{ rotulo }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>
+      Faixa de confianca
+      <select name="band">
+        {% for valor, rotulo in band_filters %}
+          <option value="{{ valor }}" {% if valor == filtro_band %}selected{% endif %}>{{ rotulo }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>
+      Busca
+      <input type="search" name="q" value="{{ filtro_q }}" placeholder="Assunto ou remetente">
+    </label>
+    <button type="submit">Filtrar</button>
+    <a href="{% url 'email_ingestion:review_list' %}" class="btn-link">Limpar</a>
+  </form>
+
   {% for email in emails %}
     {% include "email_ingestion/_review_row.html" %}
   {% empty %}

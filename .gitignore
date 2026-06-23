@@ -172,3 +172,7 @@ cython_debug/
 #.idea/
 
 # End of https://www.toptal.com/developers/gitignore/api/django
+
+# Historico local da avaliacao da IA de e-mail (gerado por `pytest -m llm`).
+# Artefato de medicao por maquina (Ollama roda local) — nao versionar.
+tests/email_ingestion/llm_eval_history.json
